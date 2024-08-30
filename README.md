@@ -187,6 +187,7 @@ Now you should be able to connect via localhost with a VNC client
 vnc://localhost:5902
 ```
 
+![mac-vnc-connect-to-server.jpg](mac-vnc-connect-to-server.jpg)
 #### RDP (Windows)
 
 ```
