@@ -1,7 +1,9 @@
 # oshiv
 A tool for finding and connecting to OCI instances via the OCI bastion service.
 
-*Quick example*
+**Quick example**
+
+Find instance(s)
 
 ```
 oshiv -f foo-node
@@ -15,6 +17,8 @@ Name: my-foo-node-2
 Instance ID: ocid1.instance.oc2.us-luke-1.bacdefghijklmnopqrstuvwxyz
 Private IP: 123.456.789.6
 ```
+
+Connect via bastion service
 
 ```
 oshiv -i 123.456.789.5 -o ocid1.instance.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
