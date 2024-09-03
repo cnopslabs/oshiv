@@ -527,6 +527,7 @@ func findAndPrintInstances(computeClient core.ComputeClient, compartmentId strin
 }
 
 func main() {
+	// TODO: switch to more mature cmd line flag parsing library
 	flagTenancyId := flag.String("t", "", "tenancy ID name")
 
 	flagListCompartments := flag.Bool("lc", false, "list compartments")

@@ -1,5 +1,24 @@
 # oshiv
-A tool for finding and connecting to OCI instances.
+A tool for finding and connecting to OCI instances via the OCI bastion service.
+
+*Quick example*
+
+```
+oshiv -f foo-node
+```
+```
+Name: my-foo-node-1
+Instance ID: ocid1.instance.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
+Private IP: 123.456.789.5
+
+Name: my-foo-node-2
+Instance ID: ocid1.instance.oc2.us-luke-1.bacdefghijklmnopqrstuvwxyz
+Private IP: 123.456.789.6
+```
+
+```
+oshiv -i 123.456.789.5 -o ocid1.instance.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
+```
 
 ## Install
 
@@ -312,6 +331,10 @@ Test/validate changes, push to your fork, make PR
 ## Future enhancements and updates
 
 - Add tests!
+- Generate and use ephemeral SSH keys
+- Switch to more mature cmd line flag parsing library
+- Use logging library
+- When creating a bastion session, only require IP address or instance ID (and lookup the other)
 - During session creation, find bastion automatically, if only one exists use it, else prompt user
 - Manage SSH client
   - https://pkg.go.dev/golang.org/x/crypto/ssh
