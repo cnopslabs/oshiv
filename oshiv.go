@@ -329,7 +329,7 @@ func createManagedSshSession(bastionId string, client bastion.BastionClient, tar
 			BastionId:           &bastionId,
 			DisplayName:         common.String("OCIBastionSession"), // TODO: Maybe set this programmatically
 			KeyDetails:          &bastion.PublicKeyDetails{PublicKeyContent: &publicKeyContent},
-			SessionTtlInSeconds: common.Int(1800),
+			SessionTtlInSeconds: common.Int(10800),
 			TargetResourceDetails: bastion.CreateManagedSshSessionTargetResourceDetails{
 				TargetResourceId:                      &targetInstance,
 				TargetResourceOperatingSystemUserName: &sshUser,
@@ -449,7 +449,7 @@ func listActiveSessions(client bastion.BastionClient, bastionId string) {
 	}
 }
 
-func printSshCommands(client bastion.BastionClient, sessionId *string, instanceIp *string, sshUser *string, sshPort *int, sshIdentityFile string) {
+func printSshCommands(client bastion.BastionClient, sessionId *string, instanceIp *string, sshUser *string, sshPort *int, sshIdentityFile string, tunnelPort *int) {
 	bastionEndpointUrl, err := url.Parse(client.Endpoint())
 	checkError(err)
 
@@ -457,11 +457,19 @@ func printSshCommands(client bastion.BastionClient, sessionId *string, instanceI
 	bastionHost := sessionIdStr + "@host." + bastionEndpointUrl.Host
 
 	// TODO: Consider proxy jump flag for commands where applicable - https://www.ateam-oracle.com/post/openssh-proxyjump-with-oci-bastion-service
-	fmt.Println("\nTunnel:")
-	fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
-	fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
-	fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
-	fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L<LOCAL PORT>:" + *instanceIp + ":<REMOTE PORT>")
+	if *tunnelPort == 0 {
+		fmt.Println("\nTunnel:")
+		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
+		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
+		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
+		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L <LOCAL PORT>:" + *instanceIp + ":<REMOTE PORT>")
+	} else {
+		fmt.Println("\nTunnel:")
+		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
+		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
+		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
+		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L " + strconv.Itoa(*tunnelPort) + ":" + *instanceIp + ":" + strconv.Itoa(*tunnelPort))
+	}
 
 	fmt.Println("\nSCP:")
 	fmt.Println("scp -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P " + strconv.Itoa(*sshPort) + " \\")
@@ -548,6 +556,8 @@ func main() {
 	flagSshPrivateKey := flag.String("k", "", "path to SSH private key (identity file)")
 	flagSshPublicKey := flag.String("e", "", "path to SSH public key")
 	flagCreatePortFwSession := flag.Bool("w", false, "Create an SSH port forward session")
+
+	flagSshTunnelPort := flag.Int("tp", 0, "SSH Tunnel port")
 
 	// Extend flag's default usage function
 	flag.Usage = func() {
@@ -675,7 +685,7 @@ func main() {
 			if *flagCreatePortFwSession {
 				printPortFwSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.port, sshPrivateKeyFileLocation)
 			} else {
-				printSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.user, &sessionInfo.port, sshPrivateKeyFileLocation)
+				printSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.user, &sessionInfo.port, sshPrivateKeyFileLocation, flagSshTunnelPort)
 			}
 		} else {
 			fmt.Println("Session is no longer active. Current state is: " + sessionInfo.state)
@@ -703,6 +713,6 @@ func main() {
 	if *flagCreatePortFwSession {
 		printPortFwSshCommands(bastionClient, sessionId, flagInstanceIp, flagSshPort, sshPrivateKeyFileLocation)
 	} else {
-		printSshCommands(bastionClient, sessionId, flagInstanceIp, flagSshUser, flagSshPort, sshPrivateKeyFileLocation)
+		printSshCommands(bastionClient, sessionId, flagInstanceIp, flagSshUser, flagSshPort, sshPrivateKeyFileLocation, flagSshTunnelPort)
 	}
 }

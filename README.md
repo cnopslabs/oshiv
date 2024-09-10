@@ -335,6 +335,7 @@ Test/validate changes, push to your fork, make PR
 ## Future enhancements and updates
 
 - Add tests!
+- Add search capability for NSG rules
 - Generate and use ephemeral SSH keys
 - Switch to more mature cmd line flag parsing library
 - Use logging library
