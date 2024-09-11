@@ -323,13 +323,13 @@ func getSshPubKeyContents(sshPrivateKeyFileLocation string) string {
 	return string(sshKeyContents)
 }
 
-func createManagedSshSession(bastionId string, client bastion.BastionClient, targetInstance string, targetIp string, publicKeyContent string, sshUser string, sshPort int) *string {
+func createManagedSshSession(bastionId string, client bastion.BastionClient, targetInstance string, targetIp string, publicKeyContent string, sshUser string, sshPort int, sessionTtl int) *string {
 	req := bastion.CreateSessionRequest{
 		CreateSessionDetails: bastion.CreateSessionDetails{
 			BastionId:           &bastionId,
 			DisplayName:         common.String("OCIBastionSession"), // TODO: Maybe set this programmatically
 			KeyDetails:          &bastion.PublicKeyDetails{PublicKeyContent: &publicKeyContent},
-			SessionTtlInSeconds: common.Int(10800),
+			SessionTtlInSeconds: common.Int(sessionTtl),
 			TargetResourceDetails: bastion.CreateManagedSshSessionTargetResourceDetails{
 				TargetResourceId:                      &targetInstance,
 				TargetResourceOperatingSystemUserName: &sshUser,
@@ -356,13 +356,13 @@ func createManagedSshSession(bastionId string, client bastion.BastionClient, tar
 	return sessionId
 }
 
-func createPortFwSession(bastionId string, client bastion.BastionClient, targetInstance string, targetIp string, publicKeyContent string, sshPort int) *string {
+func createPortFwSession(bastionId string, client bastion.BastionClient, targetInstance string, targetIp string, publicKeyContent string, sshPort int, sessionTtl int) *string {
 	req := bastion.CreateSessionRequest{
 		CreateSessionDetails: bastion.CreateSessionDetails{
 			BastionId:           &bastionId,
 			DisplayName:         common.String("OCIBastionSession"), // TODO: Maybe set this programmatically
 			KeyDetails:          &bastion.PublicKeyDetails{PublicKeyContent: &publicKeyContent},
-			SessionTtlInSeconds: common.Int(1800),
+			SessionTtlInSeconds: common.Int(sessionTtl),
 			TargetResourceDetails: bastion.PortForwardingSessionTargetResourceDetails{
 				TargetResourceId:               &targetInstance,
 				TargetResourcePort:             &sshPort,
@@ -556,6 +556,7 @@ func main() {
 	flagSshPrivateKey := flag.String("k", "", "path to SSH private key (identity file)")
 	flagSshPublicKey := flag.String("e", "", "path to SSH public key")
 	flagCreatePortFwSession := flag.Bool("w", false, "Create an SSH port forward session")
+	flagSessionTtl := flag.Int("l", 10800, "Session TTL (seconds)")
 
 	flagSshTunnelPort := flag.Int("tp", 0, "SSH Tunnel port")
 
@@ -668,12 +669,12 @@ func main() {
 			if logLevel == "DEBUG" {
 				fmt.Print("Creating SSH port forward session")
 			}
-			sessionId = createPortFwSession(bastionId, bastionClient, *flagInstanceId, *flagInstanceIp, publicKeyContent, *flagSshPort)
+			sessionId = createPortFwSession(bastionId, bastionClient, *flagInstanceId, *flagInstanceIp, publicKeyContent, *flagSshPort, *flagSessionTtl)
 		} else {
 			if logLevel == "DEBUG" {
 				fmt.Print("Creating managed SSH session")
 			}
-			sessionId = createManagedSshSession(bastionId, bastionClient, *flagInstanceId, *flagInstanceIp, publicKeyContent, *flagSshUser, *flagSshPort)
+			sessionId = createManagedSshSession(bastionId, bastionClient, *flagInstanceId, *flagInstanceIp, publicKeyContent, *flagSshUser, *flagSshPort, *flagSessionTtl)
 		}
 	} else {
 		// Check for existing session by session ID
