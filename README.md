@@ -239,34 +239,31 @@ Environment variables:
 The following environment variables will override their flag counterparts
    OCI_CLI_TENANCY
    OCI_COMPARTMENT_NAME
+   OCI_BASTION_NAME
 
 Defaults:
    SSH private key (-k): $HOME/.ssh/id_rsa
    SSH public key (-e): $HOME/.ssh/id_rsa.pub
+   SSH user (-u): opc
 
 Common command patterns:
 List compartments
-   oshiv -list-compartments
+   oshiv -lc
 
 List bastions
-   oshiv -c compartment_name -list-bastions
+   oshiv -lb
 
 Create bastion session
-   oshiv -b bastion_name -i ip_address -o instance_id
-
-Create bastion session (long)
-   oshiv -t tenant_id -c compartment_name -b bastion_name -i ip_address -o instance_id -k path_to_ssh_private_key -e path_to_ssh_public_key
+   oshiv -i ip_address -o instance_id
 
 List active sessions
-   oshiv -c mycompartment -b mybastion -list-sessions
+   oshiv -ls
 
 Connect to an active session
-   oshiv -c compartment_name -b bastion_name -k path_to_ssh_private_key -e path_to_ssh_public_key -s session_ocd
+   oshiv -s session_ocd
 
-Example of bastion session creation:
-   export OCI_CLI_TENANCY=ocid1.tenancy.oc1..aaaaaaaaabcdefghijklmnopqrstuvwxyz
-   export OCI_COMPARTMENT_NAME=mycompartment
-   oshiv -b mybastion -i 10.0.0.123 -o ocid1.instance.oc1.iad.abcdefg
+Create bastion session (all flags)
+   oshiv -t tenant_id -c compartment_name -b bastion_name -i ip_address -o instance_id -k path_to_ssh_private_key -e path_to_ssh_public_key -u cloud-user
 
 All flags for oshiv:
   -b string
@@ -275,10 +272,14 @@ All flags for oshiv:
     	compartment name
   -e string
     	path to SSH public key
+  -f string
+    	search string to search for instance
   -i string
     	instance IP address of host to connect to
   -k string
     	path to SSH private key (identity file)
+  -l int
+    	Session TTL (seconds) (default 10800)
   -lb
     	list bastions
   -lc
@@ -293,8 +294,11 @@ All flags for oshiv:
     	Session ID to check for
   -t string
     	tenancy ID name
+  -tp int
+    	SSH Tunnel port
   -u string
     	SSH user (default "opc")
+  -w	Create an SSH port forward session
 ```
 
 ## Contribute
@@ -345,3 +349,9 @@ Test/validate changes, push to your fork, make PR
   - https://pkg.go.dev/golang.org/x/crypto/ssh
 - Manage SSH keys
   - https://pkg.go.dev/crypto#PrivateKey
+
+## Troubleshooting
+
+```
+xattr -d com.apple.quarantine /Users/dan/.local/bin/oshiv
+```
