@@ -318,12 +318,12 @@ go build
 ### Build OS/Arch specific
 
 ```
-GOOS=darwin GOARCH=amd64 go build -o executables/mac/intel/oshiv
-GOOS=darwin GOARCH=arm64 go build -o executables/mac/arm/oshiv
-GOOS=windows GOARCH=amd64 go build -o executables/windows/intel/oshiv
-GOOS=windows GOARCH=arm64 go build -o executables/windows/arm/oshiv
-GOOS=linux GOARCH=amd64 go build -o executables/linux/intel/oshiv
-GOOS=linux GOARCH=arm64 go build -o executables/linux/arm/oshiv
+GOOS=darwin GOARCH=amd64 go build -o downloads/mac/intel/oshiv
+GOOS=darwin GOARCH=arm64 go build -o downloads/mac/arm/oshiv
+GOOS=windows GOARCH=amd64 go build -o downloads/windows/intel/oshiv
+GOOS=windows GOARCH=arm64 go build -o downloads/windows/arm/oshiv
+GOOS=linux GOARCH=amd64 go build -o downloads/linux/intel/oshiv
+GOOS=linux GOARCH=arm64 go build -o downloads/linux/arm/oshiv
 ```
 
 ### Local install
