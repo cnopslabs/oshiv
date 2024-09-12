@@ -41,11 +41,13 @@ Example "other"
 ```
 echo $PATH
 
-/Users/fakeuser/.pyenv/shims:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/Users/fakeuser/.local/bin
+/usr/local/bin:/Users/YOUR_USER/.local/bin
 ```
 
 ```
-mv ~/Downloads/oshiv  /Users/fakeuser/.local/bin
+mv ~/Downloads/oshiv  ~/.local/bin
+sudo xattr -d com.apple.quarantine ~/.local/bin/oshiv
+chmod +x ~/.local/bin/oshiv
 
 oshiv -h
 ```
@@ -309,26 +311,16 @@ Style guide: https://go.dev/doc/effective_go
 git clone https://github.com/dnlloyd/oshiv
 ```
 
-### Build local OS/Arch
+### Build
+
+```
+make build
+```
+
+### Local build/install
 
 ```
 go build
-```
-
-### Build OS/Arch specific
-
-```
-GOOS=darwin GOARCH=amd64 go build -o downloads/mac/intel/oshiv
-GOOS=darwin GOARCH=arm64 go build -o downloads/mac/arm/oshiv
-GOOS=windows GOARCH=amd64 go build -o downloads/windows/intel/oshiv
-GOOS=windows GOARCH=arm64 go build -o downloads/windows/arm/oshiv
-GOOS=linux GOARCH=amd64 go build -o downloads/linux/intel/oshiv
-GOOS=linux GOARCH=arm64 go build -o downloads/linux/arm/oshiv
-```
-
-### Local install
-
-```
 go install
 ```
 
@@ -352,6 +344,15 @@ Test/validate changes, push to your fork, make PR
 
 ## Troubleshooting
 
+If oshiv gets quarantined by your OS
+
 ```
-xattr -d com.apple.quarantine /Users/dan/.local/bin/oshiv
+sudo xattr -d com.apple.quarantine PATH_TO_OSHIV
 ```
+
+example
+
+```
+sudo xattr -d com.apple.quarantine ~/.local/bin/oshiv
+```
+
