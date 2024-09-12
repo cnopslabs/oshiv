@@ -596,6 +596,7 @@ func main() {
 		fmt.Println("   oshiv -t tenant_id -c compartment_name -b bastion_name -i ip_address -o instance_id -k path_to_ssh_private_key -e path_to_ssh_public_key -u cloud-user")
 
 		fmt.Fprintf(flag.CommandLine.Output(), "\nAll flags for %s:\n", os.Args[0])
+		flag.PrintDefaults()
 	}
 
 	flag.Parse()
