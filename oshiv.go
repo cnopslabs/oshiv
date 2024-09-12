@@ -18,6 +18,7 @@ import (
 )
 
 const logLevel = "INFO" // TODO: switch to logging library
+const version = "0.1.0"
 
 type SessionInfo struct {
 	state bastion.SessionLifecycleStateEnum
@@ -557,8 +558,9 @@ func main() {
 	flagSshPublicKey := flag.String("e", "", "path to SSH public key")
 	flagCreatePortFwSession := flag.Bool("w", false, "Create an SSH port forward session")
 	flagSessionTtl := flag.Int("l", 10800, "Session TTL (seconds)")
-
 	flagSshTunnelPort := flag.Int("tp", 0, "SSH Tunnel port")
+
+	flagVersion := flag.Bool("v", false, "Show version")
 
 	// Extend flag's default usage function
 	flag.Usage = func() {
@@ -594,10 +596,14 @@ func main() {
 		fmt.Println("   oshiv -t tenant_id -c compartment_name -b bastion_name -i ip_address -o instance_id -k path_to_ssh_private_key -e path_to_ssh_public_key -u cloud-user")
 
 		fmt.Fprintf(flag.CommandLine.Output(), "\nAll flags for %s:\n", os.Args[0])
-		flag.PrintDefaults()
 	}
 
 	flag.Parse()
+
+	if *flagVersion {
+		fmt.Println(version)
+		os.Exit(0)
+	}
 
 	identityClient, bastionClient, computeClient, vnetClient := initializeOciClients()
 
