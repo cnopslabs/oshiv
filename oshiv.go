@@ -17,8 +17,8 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/identity"
 )
 
-const logLevel = "INFO" // TODO: switch to logging library
-const version = "0.1.0"
+const logLevel = "INFO"   // TODO: switch to logging library
+var version = "undefined" // Version gets automatically updated during build
 
 type SessionInfo struct {
 	state bastion.SessionLifecycleStateEnum
