@@ -15,6 +15,8 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/core"
 	"github.com/oracle/oci-go-sdk/v65/identity"
+
+	"github.com/fatih/color"
 )
 
 const logLevel = "INFO"   // TODO: switch to logging library
@@ -26,6 +28,18 @@ type SessionInfo struct {
 	user  string
 	port  int
 }
+
+type Instance struct {
+	name string
+	id   string
+	ip   string
+}
+
+type instancesByName []Instance
+
+func (m instancesByName) Len() int           { return len(m) }
+func (m instancesByName) Less(i, j int) bool { return m[i].name < m[j].name }
+func (m instancesByName) Swap(i, j int)      { m[i], m[j] = m[j], m[i] }
 
 func checkError(err error) {
 	if err != nil {
@@ -178,6 +192,7 @@ func getInstances(client core.ComputeClient, compartmentId string) map[string]st
 
 func searchInstances(pattern string, instances map[string]string) map[string]string {
 	matches := make(map[string]string)
+
 	for instanceId, instanceName := range instances {
 		match, _ := regexp.MatchString(pattern, instanceName)
 		if match {
@@ -515,21 +530,33 @@ func findAndPrintInstances(computeClient core.ComputeClient, compartmentId strin
 	// returns map of instanceId: vnicId
 
 	// For all matches lookup VNIC ID based on instanceId and then return the private IP associated with the VNIC ID
+	var Instances []Instance
+
 	for instanceName, instanceId := range matches {
 		vnicId, ok := attachments[instanceId]
 		if ok {
-			fmt.Println("Name: " + instanceName)
-			fmt.Println("Instance ID: " + instanceId)
 			if logLevel == "DEBUG" {
 				fmt.Println("VNic ID: " + vnicId)
 			}
 
 			privateIp := getPrivateIp(vnetClient, vnicId)
-			fmt.Println("Private IP: " + privateIp)
-			fmt.Println("")
+			instance := Instance{instanceName, instanceId, privateIp}
+			Instances = append(Instances, instance)
+
 		} else {
 			fmt.Println("Unable to lookup VNIC for " + instanceId)
 		}
+	}
+
+	sort.Sort(instancesByName(Instances))
+
+	d := color.New(color.FgCyan, color.Bold)
+
+	for _, instance := range Instances {
+		d.Println("Name: " + instance.name)
+		fmt.Println("Instance ID: " + instance.id)
+		fmt.Println("Private IP: " + instance.ip)
+		fmt.Println("")
 	}
 
 	os.Exit(0)
