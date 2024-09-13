@@ -8,7 +8,7 @@ ARCH := $(shell uname -m)
 
 build: vet staticcheck install-local
 
-release: clean vet staticcheck compile zip
+release: clean vet staticcheck compile zip html
 
 clean:
 	-@rm -fr downloads/mac/intel/${OUT}*
@@ -47,3 +47,6 @@ zip:
 	zip -j downloads/windows/arm/${OUT}_${VERSION}_windows_arm64.zip downloads/windows/arm/${OUT}_${VERSION}_windows_arm64
 	zip -j downloads/linux/intel/${OUT}_${VERSION}_linux_amd64.zip downloads/linux/intel/${OUT}_${VERSION}_linux_amd64
 	zip -j downloads/linux/arm/${OUT}_${VERSION}_linux_arm64.zip downloads/linux/arm/${OUT}_${VERSION}_linux_arm64
+
+html:
+	cd website; go run renderhtml.go ${VERSION} index.tmpl; cd ..
