@@ -4,7 +4,7 @@ VERSION := $(shell git describe --always)
 PKG_LIST := $(shell go list ${PKG}/... | grep -v /vendor/)
 GO_FILES := $(shell find . -name '*.go' | grep -v /vendor/)
 
-build: clean compile zip
+build: clean compile zip install-local
 
 compile:
 	GOOS=darwin GOARCH=amd64 go build -v -o downloads/mac/intel/${OUT}_${VERSION}_darwin_amd64 -ldflags="-X main.version=${VERSION}"
@@ -13,6 +13,10 @@ compile:
 	GOOS=windows GOARCH=arm64 go build -v -o downloads/windows/arm/${OUT}_${VERSION}_windows_arm64 -ldflags="-X main.version=${VERSION}"
 	GOOS=linux GOARCH=amd64 go build -v -o downloads/linux/intel/${OUT}_${VERSION}_linux_amd64 -ldflags="-X main.version=${VERSION}"
 	GOOS=linux GOARCH=arm64 go build -v -o downloads/linux/arm/${OUT}_${VERSION}_linux_arm64 -ldflags="-X main.version=${VERSION}"
+
+install-local:
+	GOOS=darwin GOARCH=arm64 go build -v -ldflags="-X main.version=${VERSION}"
+	go install -v -ldflags="-X main.version=${VERSION}"
 
 zip:
 	zip -j downloads/mac/intel/${OUT}_${VERSION}_darwin_amd64.zip downloads/mac/intel/${OUT}_${VERSION}_darwin_amd64
