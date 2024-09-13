@@ -206,7 +206,7 @@ sudo ssh -i "/Users/myuser/.ssh/id_rsa" \
 -P 22 opc@123.456.789.5 -N -L 5902:123.456.789.5:5902
 ```
 
-Now you should be able to connect via localhost with a VNC client
+Now you should be able to connect (via localhost) using a VNC client. For MacOS, I recommend [TigerVNC](https://tigervnc.org/) but the built-in VNC client will work as well.
 
 ```
 vnc://localhost:5902
