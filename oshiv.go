@@ -11,16 +11,19 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/oracle/oci-go-sdk/v65/bastion"
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/core"
 	"github.com/oracle/oci-go-sdk/v65/identity"
-
-	"github.com/fatih/color"
 )
 
 const logLevel = "INFO"   // TODO: switch to logging library
 var version = "undefined" // Version gets automatically updated during build
+var boldBlue = color.New(color.FgCyan, color.Bold)
+var yellow = color.New(color.FgYellow)
+
+// var yellowSp = color.New(color.FgYellow).SprintFunc()
 
 type SessionInfo struct {
 	state bastion.SessionLifecycleStateEnum
@@ -128,7 +131,7 @@ func getCompartmentInfo(tenancyId string, client identity.IdentityClient) map[st
 }
 
 func listCompartmentNames(compartmentInfo map[string]string) {
-	fmt.Println("\nCOMPARTMENTS:")
+	boldBlue.Println("Compartments")
 
 	compartmentNames := make([]string, 0, len(compartmentInfo))
 	for compartmentName := range compartmentInfo {
@@ -141,7 +144,7 @@ func listCompartmentNames(compartmentInfo map[string]string) {
 	}
 
 	fmt.Println("\nTo set compartment, you can export OCI_COMPARTMENT_NAME:")
-	fmt.Println("   export OCI_COMPARTMENT_NAME=")
+	yellow.Println("   export OCI_COMPARTMENT_NAME=")
 }
 
 func getInstances(client core.ComputeClient, compartmentId string) map[string]string {
@@ -192,6 +195,11 @@ func getInstances(client core.ComputeClient, compartmentId string) map[string]st
 
 func searchInstances(pattern string, instances map[string]string) map[string]string {
 	matches := make(map[string]string)
+
+	// Handle simple wildcard
+	if pattern == "*" {
+		pattern = ".*"
+	}
 
 	for instanceId, instanceName := range instances {
 		match, _ := regexp.MatchString(pattern, instanceName)
@@ -307,13 +315,13 @@ func getBastionInfo(compartmentId string, client bastion.BastionClient) map[stri
 }
 
 func listBastions(compartmentName string, bastionInfo map[string]string) {
-	fmt.Println("\nBastions in compartment " + compartmentName)
+	boldBlue.Println("Bastions in compartment " + compartmentName)
 	for bastionName := range bastionInfo {
 		fmt.Println(bastionName)
 	}
 
 	fmt.Println("\nTo set bastion name, you can export OCI_BASTION_NAME:")
-	fmt.Println("   export OCI_BASTION_NAME=")
+	yellow.Println("   export OCI_BASTION_NAME=")
 }
 
 func getBastion(bastionName string, bastionId string, client bastion.BastionClient) {
@@ -343,7 +351,7 @@ func createManagedSshSession(bastionId string, client bastion.BastionClient, tar
 	req := bastion.CreateSessionRequest{
 		CreateSessionDetails: bastion.CreateSessionDetails{
 			BastionId:           &bastionId,
-			DisplayName:         common.String("OCIBastionSession"), // TODO: Maybe set this programmatically
+			DisplayName:         common.String("oshivSession"),
 			KeyDetails:          &bastion.PublicKeyDetails{PublicKeyContent: &publicKeyContent},
 			SessionTtlInSeconds: common.Int(sessionTtl),
 			TargetResourceDetails: bastion.CreateManagedSshSessionTargetResourceDetails{
@@ -365,7 +373,7 @@ func createManagedSshSession(bastionId string, client bastion.BastionClient, tar
 	}
 
 	sessionId := response.Session.Id
-	fmt.Println("\nSession ID: ")
+	boldBlue.Println("\nSession ID")
 	fmt.Println(*sessionId)
 	fmt.Println("")
 
@@ -376,7 +384,7 @@ func createPortFwSession(bastionId string, client bastion.BastionClient, targetI
 	req := bastion.CreateSessionRequest{
 		CreateSessionDetails: bastion.CreateSessionDetails{
 			BastionId:           &bastionId,
-			DisplayName:         common.String("OCIBastionSession"), // TODO: Maybe set this programmatically
+			DisplayName:         common.String("oshivSession"),
 			KeyDetails:          &bastion.PublicKeyDetails{PublicKeyContent: &publicKeyContent},
 			SessionTtlInSeconds: common.Int(sessionTtl),
 			TargetResourceDetails: bastion.PortForwardingSessionTargetResourceDetails{
@@ -397,7 +405,7 @@ func createPortFwSession(bastionId string, client bastion.BastionClient, targetI
 	}
 
 	sessionId := response.Session.Id
-	fmt.Println("\nSession ID: ")
+	boldBlue.Println("\nSession ID")
 	fmt.Println(*sessionId)
 	fmt.Println("")
 
@@ -446,7 +454,7 @@ func listActiveSessions(client bastion.BastionClient, bastionId string) {
 	response, err := client.ListSessions(context.Background(), bastion.ListSessionsRequest{BastionId: &bastionId})
 	checkError(err)
 
-	fmt.Println("\nActive bastion sessions")
+	boldBlue.Println("Active bastion sessions")
 	for _, session := range response.Items {
 		sshSessionTargetResourceDetails := session.TargetResourceDetails.(bastion.ManagedSshSessionTargetResourceDetails)
 		instanceName := sshSessionTargetResourceDetails.TargetResourceDisplayName
@@ -474,25 +482,25 @@ func printSshCommands(client bastion.BastionClient, sessionId *string, instanceI
 
 	// TODO: Consider proxy jump flag for commands where applicable - https://www.ateam-oracle.com/post/openssh-proxyjump-with-oci-bastion-service
 	if *tunnelPort == 0 {
-		fmt.Println("\nTunnel:")
+		boldBlue.Println("\nTunnel")
 		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
-		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L <LOCAL PORT>:" + *instanceIp + ":<REMOTE PORT>")
+		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L " + color.RedString("LOCAL_PORT") + ":" + *instanceIp + ":" + color.RedString("REMOTE_PORT"))
 	} else {
-		fmt.Println("\nTunnel:")
+		boldBlue.Println("\nTunnel")
 		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
 		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L " + strconv.Itoa(*tunnelPort) + ":" + *instanceIp + ":" + strconv.Itoa(*tunnelPort))
 	}
 
-	fmt.Println("\nSCP:")
+	boldBlue.Println("\nSCP")
 	fmt.Println("scp -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P " + strconv.Itoa(*sshPort) + " \\")
 	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p -p 22 " + bastionHost + "' \\")
-	fmt.Println("<SOURCE PATH> " + *sshUser + "@" + *instanceIp + ":<TARGET PATH>")
+	fmt.Println(color.RedString("SOURCE_PATH ") + *sshUser + "@" + *instanceIp + ":" + color.RedString("TARGET_PATH"))
 
-	fmt.Println("\nSSH:")
+	boldBlue.Println("\nSSH")
 	fmt.Println("ssh -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p -p 22 " + bastionHost + "' \\")
 	fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp)
@@ -507,8 +515,8 @@ func printPortFwSshCommands(client bastion.BastionClient, sessionId *string, ins
 
 	// Example from console
 	// ssh -i <privateKey> -N -L <localPort>:123.456.789:22 -p 22 ocid1.bastionsession.oc2.us-luke-1.abcdefghijklmnop@host.bastion.us-luke-1.oci.oraclegovcloud.com
-	fmt.Println("\nTunnel:")
-	fmt.Println("ssh -N -L <localPort>:" + *instanceIp + ":" + strconv.Itoa(*sshPort) + " \\")
+	boldBlue.Println("\nTunnel")
+	fmt.Println("ssh -N -L " + color.RedString("LOCAL_PORT") + ":" + *instanceIp + ":" + strconv.Itoa(*sshPort) + " \\")
 	fmt.Println("-i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 	fmt.Println("-p " + strconv.Itoa(*sshPort) + " " + bastionHost)
 }
@@ -550,10 +558,8 @@ func findAndPrintInstances(computeClient core.ComputeClient, compartmentId strin
 
 	sort.Sort(instancesByName(Instances))
 
-	d := color.New(color.FgCyan, color.Bold)
-
 	for _, instance := range Instances {
-		d.Println("Name: " + instance.name)
+		boldBlue.Println("Name: " + instance.name)
 		fmt.Println("Instance ID: " + instance.id)
 		fmt.Println("Private IP: " + instance.ip)
 		fmt.Println("")
