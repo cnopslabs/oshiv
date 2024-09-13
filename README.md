@@ -1,4 +1,4 @@
-# oshiv
+# OCI Shiv
 A tool for finding and connecting to OCI instances via the OCI bastion service.
 
 **Quick example**
