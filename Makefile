@@ -8,7 +8,7 @@ ARCH := $(shell uname -m)
 
 build: vet staticcheck install-local
 
-release: clean vet staticcheck compile zip html
+release: clean vet staticcheck compile zip html install-local
 
 clean:
 	-@rm -fr website/downloads/mac/intel/${OUT}*
