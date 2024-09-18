@@ -603,8 +603,7 @@ func findAndPrintMatches(computeClient core.ComputeClient, compartmentId string,
 		for _, cluster := range clusterMatches {
 			boldBlue.Println("Name: " + cluster.name)
 			fmt.Println("Cluster ID: " + cluster.id)
-			fmt.Println("Private endpoint IP: " + cluster.privateEndpointIp)
-			fmt.Println("Private endpoint port: " + cluster.privateEndpointPort)
+			fmt.Println("Private endpoint: " + cluster.privateEndpointIp + ":" + cluster.privateEndpointPort)
 			fmt.Println("")
 		}
 	}
