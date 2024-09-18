@@ -580,7 +580,7 @@ func printPortFwSshCommands(client bastion.BastionClient, sessionId *string, tar
 
 	if *flagOkeClusterId != "" {
 		boldYellow.Println("\nUpdate kube config (One time operation)")
-		fmt.Println("oci ce cluster create-kubeconfig --cluster-id " + *flagOkeClusterId + " --token-version 2.0.0 --kube-endpoint " + *targetIp)
+		fmt.Println("oci ce cluster create-kubeconfig --cluster-id " + *flagOkeClusterId + " --token-version 2.0.0 --kube-endpoint PRIVATE_ENDPOINT --auth security_token")
 	}
 
 	boldYellow.Println("\nPort Forwarding command")

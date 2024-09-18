@@ -226,13 +226,15 @@ oshiv -i 123.456.789.5 -oke ocid1.cluster.oc2.us-luke-1.abcdefghijklmnopqrstuvwx
 `oshiv` will produce an SSH command to allow port forwarding connectivity to your cluster. It will also produce an oci cli commands to update your Kubernetes config file with the OKE cluster details (this only needs to be performed once).
 
 ```
-Update kube config (One time operation)
+Update kube config (One time operation):
 oci ce cluster create-kubeconfig --cluster-id ocid1.cluster.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz --token-version 2.0.0 --kube-endpoint 123.456.789.7
 
-Port Forwarding command
+Port Forwarding command:
 ssh -i /Users/myuser/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 -p 22 -N -L 6443:123.456.789.7:6443 ocid1.bastionsession.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz@host.bastion.us-luke-1.oci.oraclegovcloud.com
 ```
+
+You should now be able to connect to your cluster's API endpoint using tools like `kubectl` and `k9s`.
 
 ### Tunneling examples
 
