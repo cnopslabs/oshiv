@@ -1,9 +1,9 @@
 # OCI Shiv
-A tool for finding and connecting to OCI instances via the OCI bastion service.
+A tool for finding OCI instances and OKE Kubernetes clusters and then connecting to them via the OCI bastion service.
 
-**Quick example**
+**Instance example**
 
-Find instance(s)
+Search for instances
 
 ```
 oshiv -f foo-node
@@ -22,6 +22,26 @@ Connect via bastion service
 
 ```
 oshiv -i 123.456.789.5 -o ocid1.instance.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
+```
+
+**Kubernetes cluster example**
+
+Search for clusters
+
+```
+oshiv -f foo-cluster
+```
+```
+Name: oke-my-foo-cluster
+Cluster ID: ocid1.cluster.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
+Private endpoint IP: 123.456.789.7
+Private endpoint port: 6443
+```
+
+Connect via bastion service
+
+```
+oshiv -i 123.456.789.7 -oke ocid1.cluster.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
 ```
 
 ## Install
@@ -113,7 +133,7 @@ By default, `oshiv` uses port `22` user. This can be overriden by flags. See `os
 
 *Note: This is the port used to SSH to the bastion host and subsequently the target host. Not to be confused with the local/remote ports used for tunneling.*
 
-### Common usage pattern
+### Common usage patterns
 
 1. List compartments for tenancy
 
@@ -167,7 +187,7 @@ To set bastion name, you can export OCI_BASTION_NAME:
 export OCI_BASTION_NAME=mybastion-1
 ```
 
-6. Create bastion session
+6. Create bastion session to connect to instance
 
 ```
 oshiv -i 123.456.789.5 -o ocid1.instance.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
@@ -182,7 +202,7 @@ Tunnel:
 sudo ssh -i "/Users/myuser/.ssh/id_rsa" \
 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 -o ProxyCommand='ssh -i "/Users/myuser/.ssh/id_rsa" -W %h:%p -p 22 ocid1.bastionsession.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz@host.bastion.us-luke-1.oci.oraclegovcloud.com' \
--P 22 opc@123.456.789.5 -N -L<LOCAL PORT>:123.456.789.5:<REMOTE PORT>
+-P 22 opc@123.456.789.5 -N -L <LOCAL PORT>:123.456.789.5:<REMOTE PORT>
 
 SCP:
 scp -i /Users/myuser/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P 22 \
@@ -193,6 +213,25 @@ SSH:
 ssh -i /Users/myuser/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 -o ProxyCommand='ssh -i /Users/myuser/.ssh/id_rsa -W %h:%p -p 22 ocid1.bastionsession.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz@host.bastion.us-luke-1.oci.oraclegovcloud.com' \
 -P 22 opc@123.456.789.5
+```
+
+8. Create bastion session to connect to OKE cluster
+
+```
+oshiv -i 123.456.789.5 -oke ocid1.cluster.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
+```
+
+7. Connect to cluster
+
+`oshiv` will produce an SSH command to allow port forwarding connectivity to your cluster. It will also produce an oci cli commands to update your Kubernetes config file with the OKE cluster details (this only needs to be performed once).
+
+```
+Update kube config (One time operation)
+oci ce cluster create-kubeconfig --cluster-id ocid1.cluster.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz --token-version 2.0.0 --kube-endpoint 123.456.789.7
+
+Port Forwarding command
+ssh -i /Users/myuser/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+-p 22 -N -L 6443:123.456.789.7:6443 ocid1.bastionsession.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz@host.bastion.us-luke-1.oci.oraclegovcloud.com
 ```
 
 ### Tunneling examples
@@ -276,8 +315,10 @@ All flags for oshiv:
     	path to SSH public key
   -f string
     	search string to search for instance
+  -fw
+    	Create an SSH port forward session
   -i string
-    	instance IP address of host to connect to
+    	IP address of host/endpoint to connect to
   -k string
     	path to SSH private key (identity file)
   -l int
@@ -290,6 +331,8 @@ All flags for oshiv:
     	list sessions
   -o string
     	instance ID of host to connect to
+  -oke string
+    	OKE cluster ID
   -p int
     	SSH port (default 22)
   -s string
@@ -300,7 +343,7 @@ All flags for oshiv:
     	SSH Tunnel port
   -u string
     	SSH user (default "opc")
-  -w	Create an SSH port forward session
+  -v	Show version
 ```
 
 ## Contribute
@@ -355,4 +398,3 @@ example
 ```
 sudo xattr -d com.apple.quarantine ~/.local/bin/oshiv
 ```
-

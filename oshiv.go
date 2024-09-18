@@ -9,11 +9,13 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
 	"github.com/oracle/oci-go-sdk/v65/bastion"
 	"github.com/oracle/oci-go-sdk/v65/common"
+	"github.com/oracle/oci-go-sdk/v65/containerengine"
 	"github.com/oracle/oci-go-sdk/v65/core"
 	"github.com/oracle/oci-go-sdk/v65/identity"
 )
@@ -21,6 +23,7 @@ import (
 const logLevel = "INFO"   // TODO: switch to logging library
 var version = "undefined" // Version gets automatically updated during build
 var boldBlue = color.New(color.FgCyan, color.Bold)
+var boldYellow = color.New(color.FgYellow, color.Bold)
 var yellow = color.New(color.FgYellow)
 
 // var yellowSp = color.New(color.FgYellow).SprintFunc()
@@ -36,6 +39,13 @@ type Instance struct {
 	name string
 	id   string
 	ip   string
+}
+
+type Cluster struct {
+	name                string
+	id                  string
+	privateEndpointIp   string
+	privateEndpointPort string
 }
 
 type instancesByName []Instance
@@ -57,7 +67,7 @@ func getHomeDir() string {
 	return homeDir
 }
 
-func initializeOciClients() (identity.IdentityClient, bastion.BastionClient, core.ComputeClient, core.VirtualNetworkClient) {
+func initializeOciClients() (identity.IdentityClient, bastion.BastionClient, core.ComputeClient, core.VirtualNetworkClient, containerengine.ContainerEngineClient) {
 	var config common.ConfigurationProvider
 
 	profile, exists := os.LookupEnv("OCI_CLI_PROFILE")
@@ -90,7 +100,10 @@ func initializeOciClients() (identity.IdentityClient, bastion.BastionClient, cor
 	bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(config)
 	checkError(err)
 
-	return identityClient, bastionClient, computeClient, vnetClient
+	containerEngineClient, err := containerengine.NewContainerEngineClientWithConfigurationProvider(config)
+	checkError(err)
+
+	return identityClient, bastionClient, computeClient, vnetClient, containerEngineClient
 }
 
 func getTenancyId(tenancyIdFlag string, client identity.IdentityClient) string {
@@ -191,6 +204,59 @@ func getInstances(client core.ComputeClient, compartmentId string) map[string]st
 	}
 
 	return instances
+}
+
+func getClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string) []Cluster {
+	var Clusters []Cluster
+
+	initialResponse, err := containerEngineClient.ListClusters(context.Background(), containerengine.ListClustersRequest{
+		CompartmentId: &compartmentId,
+		// LifecycleState: core.InstanceLifecycleStateRunning,
+	})
+	checkError(err)
+
+	for _, cluster := range initialResponse.Items {
+		// fmt.Println(cluster)/
+
+		clusterId := *cluster.Id
+		clusterName := *cluster.Name
+		// clusterPrivateEndpoint := *cluster.Endpoints.PrivateEndpoint
+
+		clusterPrivateEndpointIp, clusterPrivateEndpointPort, found := strings.Cut(*cluster.Endpoints.PrivateEndpoint, ":")
+		// clusterPrivateEndpointPort := *cluster.Endpoints.PrivateEndpoint
+
+		if found {
+			cluster := Cluster{clusterName, clusterId, clusterPrivateEndpointIp, clusterPrivateEndpointPort}
+			Clusters = append(Clusters, cluster)
+		}
+	}
+
+	return Clusters
+}
+
+func searchClusters(pattern string, clusters []Cluster) []Cluster {
+	var matches []Cluster
+
+	// Handle simple wildcard
+	if pattern == "*" {
+		pattern = ".*"
+	}
+
+	for _, cluster := range clusters {
+		match, _ := regexp.MatchString(pattern, cluster.name)
+		if match {
+			matches = append(matches, cluster)
+		}
+	}
+
+	if logLevel == "DEBUG" {
+		fmt.Println("\nMatches")
+		for cluster := range matches {
+			fmt.Println(cluster)
+		}
+	}
+
+	return matches
 }
 
 func searchInstances(pattern string, instances map[string]string) map[string]string {
@@ -472,7 +538,7 @@ func listActiveSessions(client bastion.BastionClient, bastionId string) {
 	}
 }
 
-func printSshCommands(client bastion.BastionClient, sessionId *string, instanceIp *string, sshUser *string, sshPort *int, sshIdentityFile string, tunnelPort *int) {
+func printSshCommands(client bastion.BastionClient, sessionId *string, instanceIp *string, sshUser *string, sshPort *int, sshIdentityFile string, tunnelPort int) {
 	bastionEndpointUrl, err := url.Parse(client.Endpoint())
 	checkError(err)
 
@@ -480,56 +546,76 @@ func printSshCommands(client bastion.BastionClient, sessionId *string, instanceI
 	bastionHost := sessionIdStr + "@host." + bastionEndpointUrl.Host
 
 	// TODO: Consider proxy jump flag for commands where applicable - https://www.ateam-oracle.com/post/openssh-proxyjump-with-oci-bastion-service
-	if *tunnelPort == 0 {
-		boldBlue.Println("\nTunnel")
+	if tunnelPort == 0 {
+		boldYellow.Println("\nTunnel command")
 		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
 		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L " + color.RedString("LOCAL_PORT") + ":" + *instanceIp + ":" + color.RedString("REMOTE_PORT"))
 	} else {
-		boldBlue.Println("\nTunnel")
+		boldYellow.Println("\nTunnel command")
 		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
-		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L " + strconv.Itoa(*tunnelPort) + ":" + *instanceIp + ":" + strconv.Itoa(*tunnelPort))
+		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L " + strconv.Itoa(tunnelPort) + ":" + *instanceIp + ":" + strconv.Itoa(tunnelPort))
 	}
 
-	boldBlue.Println("\nSCP")
+	boldYellow.Println("\nSCP command")
 	fmt.Println("scp -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P " + strconv.Itoa(*sshPort) + " \\")
 	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p -p 22 " + bastionHost + "' \\")
 	fmt.Println(color.RedString("SOURCE_PATH ") + *sshUser + "@" + *instanceIp + ":" + color.RedString("TARGET_PATH"))
 
-	boldBlue.Println("\nSSH")
+	boldYellow.Println("\nSSH comand")
 	fmt.Println("ssh -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p -p 22 " + bastionHost + "' \\")
 	fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp)
 }
 
-func printPortFwSshCommands(client bastion.BastionClient, sessionId *string, instanceIp *string, sshPort *int, sshIdentityFile string, tunnelPort *int) {
+func printPortFwSshCommands(client bastion.BastionClient, sessionId *string, targetIp *string, sshPort *int, sshIdentityFile string, tunnelPort int, flagOkeClusterId *string) {
 	bastionEndpointUrl, err := url.Parse(client.Endpoint())
 	checkError(err)
 
 	sessionIdStr := *sessionId
 	bastionHost := sessionIdStr + "@host." + bastionEndpointUrl.Host
 
-	boldBlue.Println("\nPort Forwarding")
+	if *flagOkeClusterId != "" {
+		boldYellow.Println("\nUpdate kube config (One time operation)")
+		fmt.Println("oci ce cluster create-kubeconfig --cluster-id " + *flagOkeClusterId + " --token-version 2.0.0 --kube-endpoint " + *targetIp)
+	}
+
+	boldYellow.Println("\nPort Forwarding command")
 	fmt.Println("ssh -i \"" + sshIdentityFile + "\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
-	if *tunnelPort == 0 {
-		fmt.Println("-p " + strconv.Itoa(*sshPort) + " -N -L " + color.RedString("LOCAL_PORT") + ":" + *instanceIp + ":" + color.RedString("REMOTE_PORT") + " " + bastionHost)
+	if tunnelPort == 0 {
+		fmt.Println("-p " + strconv.Itoa(*sshPort) + " -N -L " + color.RedString("LOCAL_PORT") + ":" + *targetIp + ":" + color.RedString("REMOTE_PORT") + " " + bastionHost)
 	} else {
-		fmt.Println("-p " + strconv.Itoa(*sshPort) + " -N -L " + strconv.Itoa(*tunnelPort) + ":" + *instanceIp + ":" + strconv.Itoa(*tunnelPort) + " " + bastionHost)
+		fmt.Println("-p " + strconv.Itoa(*sshPort) + " -N -L " + strconv.Itoa(tunnelPort) + ":" + *targetIp + ":" + strconv.Itoa(tunnelPort) + " " + bastionHost)
 	}
 }
 
-func findAndPrintInstances(computeClient core.ComputeClient, compartmentId string, flagSearchString string, vnetClient core.VirtualNetworkClient) {
+func findAndPrintMatches(computeClient core.ComputeClient, compartmentId string, flagSearchString string, vnetClient core.VirtualNetworkClient, containerEngineClient containerengine.ContainerEngineClient) {
+	pattern := flagSearchString
+
+	clusters := getClusters(containerEngineClient, compartmentId)
+	clusterMatches := searchClusters(pattern, clusters)
+
+	if len(clusterMatches) > 0 {
+		boldYellow.Println("OKE Clusters")
+		for _, cluster := range clusterMatches {
+			boldBlue.Println("Name: " + cluster.name)
+			fmt.Println("Cluster ID: " + cluster.id)
+			fmt.Println("Private endpoint IP: " + cluster.privateEndpointIp)
+			fmt.Println("Private endpoint port: " + cluster.privateEndpointPort)
+			fmt.Println("")
+		}
+	}
+
 	// Get relevant info for ALL instances
 	// We have to do this because GetInstance/ListInstancesRequest does not allow filtering in the request
 	instances := getInstances(computeClient, compartmentId)
 	// returns map of instanceId: instanceName
 
 	//Search instance info and return instance names and instance IDs of matches on instance name
-	pattern := flagSearchString
-	matches := searchInstances(pattern, instances)
+	instanceMatches := searchInstances(pattern, instances)
 	// returns map of instanceName: instanceId
 
 	// Get ALL VNIC attachments
@@ -540,7 +626,7 @@ func findAndPrintInstances(computeClient core.ComputeClient, compartmentId strin
 	// For all matches lookup VNIC ID based on instanceId and then return the private IP associated with the VNIC ID
 	var Instances []Instance
 
-	for instanceName, instanceId := range matches {
+	for instanceName, instanceId := range instanceMatches {
 		vnicId, ok := attachments[instanceId]
 		if ok {
 			if logLevel == "DEBUG" {
@@ -556,13 +642,16 @@ func findAndPrintInstances(computeClient core.ComputeClient, compartmentId strin
 		}
 	}
 
-	sort.Sort(instancesByName(Instances))
+	if len(Instances) > 0 {
+		sort.Sort(instancesByName(Instances))
 
-	for _, instance := range Instances {
-		boldBlue.Println("Name: " + instance.name)
-		fmt.Println("Instance ID: " + instance.id)
-		fmt.Println("Private IP: " + instance.ip)
-		fmt.Println("")
+		boldYellow.Println("Instances")
+		for _, instance := range Instances {
+			boldBlue.Println("Name: " + instance.name)
+			fmt.Println("Instance ID: " + instance.id)
+			fmt.Println("Private IP: " + instance.ip)
+			fmt.Println("")
+		}
 	}
 
 	os.Exit(0)
@@ -592,6 +681,8 @@ func main() {
 	flagCreatePortFwSession := flag.Bool("fw", false, "Create an SSH port forward session")
 	flagSessionTtl := flag.Int("l", 10800, "Session TTL (seconds)")
 	flagSshTunnelPort := flag.Int("tp", 0, "SSH Tunnel port")
+
+	flagOkeClusterId := flag.String("oke", "", "OKE cluster ID")
 
 	flagVersion := flag.Bool("v", false, "Show version")
 
@@ -639,7 +730,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	identityClient, bastionClient, computeClient, vnetClient := initializeOciClients()
+	identityClient, bastionClient, computeClient, vnetClient, containerEngineClient := initializeOciClients()
 
 	tenancyId := getTenancyId(*flagTenancyId, identityClient)
 	compartmentInfo := getCompartmentInfo(tenancyId, identityClient)
@@ -655,7 +746,7 @@ func main() {
 	bastionInfo := getBastionInfo(compartmentId, bastionClient)
 
 	if *flagSearchString != "" {
-		findAndPrintInstances(computeClient, compartmentId, *flagSearchString, vnetClient)
+		findAndPrintMatches(computeClient, compartmentId, *flagSearchString, vnetClient, containerEngineClient)
 	}
 
 	if *flagListBastions {
@@ -700,33 +791,34 @@ func main() {
 
 	publicKeyContent := getSshPubKeyContents(sshPublicKeyFileLocation)
 
+	var sshTunnelPort int
+	if *flagOkeClusterId != "" {
+		sshTunnelPort = 6443
+	} else {
+		sshTunnelPort = *flagSshTunnelPort
+	}
+
 	// Create bastion sessions
 	var sessionId *string
 	if *flagSessionId == "" {
 		// No session ID passed, create a new session
-		// ---->
-		if *flagCreatePortFwSession {
-			if logLevel == "DEBUG" {
-				fmt.Print("Creating SSH port forward session")
-			}
-			sessionId = createPortFwSession(bastionId, bastionClient, *flagTargetIp, publicKeyContent, *flagSshTunnelPort, *flagSessionTtl)
+		if *flagCreatePortFwSession || *flagOkeClusterId != "" {
+
+			sessionId = createPortFwSession(bastionId, bastionClient, *flagTargetIp, publicKeyContent, sshTunnelPort, *flagSessionTtl)
 		} else {
-			if logLevel == "DEBUG" {
-				fmt.Print("Creating managed SSH session")
-			}
 			sessionId = createManagedSshSession(bastionId, bastionClient, *flagInstanceId, *flagTargetIp, publicKeyContent, *flagSshUser, *flagSshPort, *flagSessionTtl)
 		}
 	} else {
 		// Check for existing session by session ID
 		fmt.Println("Session ID passed, checking session...")
 		sessionId = flagSessionId
-		sessionInfo := checkSession(bastionClient, sessionId, *flagCreatePortFwSession)
+		sessionInfo := checkSession(bastionClient, sessionId, *flagCreatePortFwSession || *flagOkeClusterId != "")
 
 		if sessionInfo.state == "ACTIVE" {
 			if *flagCreatePortFwSession {
-				printPortFwSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.port, sshPrivateKeyFileLocation, flagSshTunnelPort)
+				printPortFwSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.port, sshPrivateKeyFileLocation, sshTunnelPort, flagOkeClusterId)
 			} else {
-				printSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.user, &sessionInfo.port, sshPrivateKeyFileLocation, flagSshTunnelPort)
+				printSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.user, &sessionInfo.port, sshPrivateKeyFileLocation, sshTunnelPort)
 			}
 		} else {
 			fmt.Println("Session is no longer active. Current state is: " + sessionInfo.state)
@@ -735,7 +827,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	sessionInfo := checkSession(bastionClient, sessionId, *flagCreatePortFwSession)
+	sessionInfo := checkSession(bastionClient, sessionId, *flagCreatePortFwSession || *flagOkeClusterId != "")
 
 	for sessionInfo.state != "ACTIVE" {
 		if sessionInfo.state == "DELETED" {
@@ -747,13 +839,13 @@ func main() {
 		} else {
 			fmt.Println("Session not yet active, waiting... (State: " + sessionInfo.state + ")")
 			time.Sleep(15 * time.Second)
-			sessionInfo = checkSession(bastionClient, sessionId, *flagCreatePortFwSession)
+			sessionInfo = checkSession(bastionClient, sessionId, *flagCreatePortFwSession || *flagOkeClusterId != "")
 		}
 	}
 
-	if *flagCreatePortFwSession {
-		printPortFwSshCommands(bastionClient, sessionId, flagTargetIp, flagSshPort, sshPrivateKeyFileLocation, flagSshTunnelPort)
+	if *flagCreatePortFwSession || *flagOkeClusterId != "" {
+		printPortFwSshCommands(bastionClient, sessionId, flagTargetIp, flagSshPort, sshPrivateKeyFileLocation, sshTunnelPort, flagOkeClusterId)
 	} else {
-		printSshCommands(bastionClient, sessionId, flagTargetIp, flagSshUser, flagSshPort, sshPrivateKeyFileLocation, flagSshTunnelPort)
+		printSshCommands(bastionClient, sessionId, flagTargetIp, flagSshUser, flagSshPort, sshPrivateKeyFileLocation, sshTunnelPort)
 	}
 }
