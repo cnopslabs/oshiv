@@ -770,9 +770,26 @@ func main() {
 	}
 
 	// Anything past this point requires a bastion
-	bastionName := getBastionName(*flagBastionName)
+	var bastionName string
+	var bastionId string
 
-	bastionId := bastionInfo[bastionName]
+	// If there is only one bastion, no need to require bastion name as input
+	if len(bastionInfo) == 1 {
+		for name, id := range bastionInfo {
+			bastionName = name
+			bastionId = id
+
+			if logLevel == "DEBUG" {
+				fmt.Println("Only one bastion found, using it")
+				fmt.Println(bastionName + " (" + bastionId + ")")
+			}
+		}
+	} else {
+		// There were multiple bastions found so we'll need to know which one to use
+		bastionName = getBastionName(*flagBastionName)
+		bastionId = bastionInfo[bastionName]
+	}
+
 	getBastion(bastionName, bastionId, bastionClient)
 
 	if *flagListSessions {

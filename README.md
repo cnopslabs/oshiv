@@ -381,7 +381,6 @@ Test/validate changes, push to your fork, make PR
 - Switch to more mature cmd line flag parsing library
 - Use logging library
 - When creating a bastion session, only require IP address or instance ID (and lookup the other)
-- During session creation, find bastion automatically, if only one exists use it, else prompt user
 - Manage SSH client
   - https://pkg.go.dev/golang.org/x/crypto/ssh
 - Manage SSH keys
