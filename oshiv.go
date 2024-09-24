@@ -26,8 +26,6 @@ var boldBlue = color.New(color.FgCyan, color.Bold)
 var boldYellow = color.New(color.FgYellow, color.Bold)
 var yellow = color.New(color.FgYellow)
 
-// var yellowSp = color.New(color.FgYellow).SprintFunc()
-
 type SessionInfo struct {
 	state bastion.SessionLifecycleStateEnum
 	ip    string
@@ -538,7 +536,7 @@ func listActiveSessions(client bastion.BastionClient, bastionId string) {
 	}
 }
 
-func printSshCommands(client bastion.BastionClient, sessionId *string, instanceIp *string, sshUser *string, sshPort *int, sshIdentityFile string, tunnelPort int) {
+func printSshCommands(client bastion.BastionClient, sessionId *string, instanceIp *string, sshUser *string, sshPort *int, sshIdentityFile string, tunnelPort int, localPort *int) {
 	bastionEndpointUrl, err := url.Parse(client.Endpoint())
 	checkError(err)
 
@@ -552,6 +550,12 @@ func printSshCommands(client bastion.BastionClient, sessionId *string, instanceI
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
 		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L " + color.RedString("LOCAL_PORT") + ":" + *instanceIp + ":" + color.RedString("REMOTE_PORT"))
+	} else if *localPort != 0 {
+		boldYellow.Println("\nTunnel command")
+		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
+		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
+		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
+		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L " + strconv.Itoa(*localPort) + ":" + *instanceIp + ":" + strconv.Itoa(tunnelPort))
 	} else {
 		boldYellow.Println("\nTunnel command")
 		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
@@ -571,7 +575,7 @@ func printSshCommands(client bastion.BastionClient, sessionId *string, instanceI
 	fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp)
 }
 
-func printPortFwSshCommands(client bastion.BastionClient, sessionId *string, targetIp *string, sshPort *int, sshIdentityFile string, tunnelPort int, flagOkeClusterId *string) {
+func printPortFwSshCommands(client bastion.BastionClient, sessionId *string, targetIp *string, sshPort *int, sshIdentityFile string, tunnelPort int, localTunnelPort int, flagOkeClusterId *string) {
 	bastionEndpointUrl, err := url.Parse(client.Endpoint())
 	checkError(err)
 
@@ -585,8 +589,11 @@ func printPortFwSshCommands(client bastion.BastionClient, sessionId *string, tar
 
 	boldYellow.Println("\nPort Forwarding command")
 	fmt.Println("ssh -i \"" + sshIdentityFile + "\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
+
 	if tunnelPort == 0 {
 		fmt.Println("-p " + strconv.Itoa(*sshPort) + " -N -L " + color.RedString("LOCAL_PORT") + ":" + *targetIp + ":" + color.RedString("REMOTE_PORT") + " " + bastionHost)
+	} else if localTunnelPort != 0 {
+		fmt.Println("-p " + strconv.Itoa(*sshPort) + " -N -L " + strconv.Itoa(localTunnelPort) + ":" + *targetIp + ":" + strconv.Itoa(tunnelPort) + " " + bastionHost)
 	} else {
 		fmt.Println("-p " + strconv.Itoa(*sshPort) + " -N -L " + strconv.Itoa(tunnelPort) + ":" + *targetIp + ":" + strconv.Itoa(tunnelPort) + " " + bastionHost)
 	}
@@ -677,9 +684,18 @@ func main() {
 	flagSshPort := flag.Int("p", 22, "SSH port")
 	flagSshPrivateKey := flag.String("k", "", "path to SSH private key (identity file)")
 	flagSshPublicKey := flag.String("e", "", "path to SSH public key")
-	flagCreatePortFwSession := flag.Bool("fw", false, "Create an SSH port forward session")
 	flagSessionTtl := flag.Int("l", 10800, "Session TTL (seconds)")
-	flagSshTunnelPort := flag.Int("tp", 0, "SSH Tunnel port")
+
+	flagCreatePortFwSession := flag.Bool("fw", false, "Create an SSH port forward session")
+
+	// For managed SSH sessions: tp will be used for both LOCAL and REMOTE port in tunnel command
+	// For port forward SSH sessions: tp will be used for:
+	//    1. the session's target port
+	//    2. both LOCAL and REMOTE port in tunnel command
+	flagSshTunnelPort := flag.Int("tp", 0, "SSH tunnel port")
+
+	// This will override the local port for both managed SSH and and port forward sessions
+	flagSshTunnelPortOverrideLocal := flag.Int("tpl", 0, "SSH tunnel local port")
 
 	flagOkeClusterId := flag.String("oke", "", "OKE cluster ID")
 
@@ -815,9 +831,9 @@ func main() {
 
 		if sessionInfo.state == "ACTIVE" {
 			if *flagCreatePortFwSession {
-				printPortFwSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.port, sshPrivateKeyFileLocation, sshTunnelPort, flagOkeClusterId)
+				printPortFwSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.port, sshPrivateKeyFileLocation, sshTunnelPort, *flagSshTunnelPortOverrideLocal, flagOkeClusterId)
 			} else {
-				printSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.user, &sessionInfo.port, sshPrivateKeyFileLocation, sshTunnelPort)
+				printSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.user, &sessionInfo.port, sshPrivateKeyFileLocation, sshTunnelPort, flagSshTunnelPortOverrideLocal)
 			}
 		} else {
 			fmt.Println("Session is no longer active. Current state is: " + sessionInfo.state)
@@ -837,14 +853,14 @@ func main() {
 			os.Exit(1)
 		} else {
 			fmt.Println("Session not yet active, waiting... (State: " + sessionInfo.state + ")")
-			time.Sleep(15 * time.Second)
+			time.Sleep(10 * time.Second)
 			sessionInfo = checkSession(bastionClient, sessionId, *flagCreatePortFwSession || *flagOkeClusterId != "")
 		}
 	}
 
 	if *flagCreatePortFwSession || *flagOkeClusterId != "" {
-		printPortFwSshCommands(bastionClient, sessionId, flagTargetIp, flagSshPort, sshPrivateKeyFileLocation, sshTunnelPort, flagOkeClusterId)
+		printPortFwSshCommands(bastionClient, sessionId, flagTargetIp, flagSshPort, sshPrivateKeyFileLocation, sshTunnelPort, *flagSshTunnelPortOverrideLocal, flagOkeClusterId)
 	} else {
-		printSshCommands(bastionClient, sessionId, flagTargetIp, flagSshUser, flagSshPort, sshPrivateKeyFileLocation, sshTunnelPort)
+		printSshCommands(bastionClient, sessionId, flagTargetIp, flagSshUser, flagSshPort, sshPrivateKeyFileLocation, sshTunnelPort, flagSshTunnelPortOverrideLocal)
 	}
 }
