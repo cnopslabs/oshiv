@@ -689,13 +689,11 @@ func main() {
 	flagCreatePortFwSession := flag.Bool("fw", false, "Create an SSH port forward session")
 
 	// For managed SSH sessions: tp will be used for both LOCAL and REMOTE port in tunnel command
-	// For port forward SSH sessions: tp will be used for:
-	//    1. the session's target port
-	//    2. both LOCAL and REMOTE port in tunnel command
-	flagSshTunnelPort := flag.Int("tp", 0, "SSH tunnel port")
+	// For port forward SSH sessions: tp will be used for both LOCAL and REMOTE port in tunnel command and the session's target port
+	flagSshTunnelPort := flag.Int("tp", 0, "SSH tunnel port") // TODO: consider breaking out tunnel port from port forwarding port
 
 	// This will override the local port for both managed SSH and and port forward sessions
-	flagSshTunnelPortOverrideLocal := flag.Int("tpl", 0, "SSH tunnel local port")
+	flagSshTunnelPortOverrideLocal := flag.Int("tpl", 0, "SSH tunnel local port override")
 
 	flagOkeClusterId := flag.String("oke", "", "OKE cluster ID")
 
@@ -778,12 +776,13 @@ func main() {
 		for name, id := range bastionInfo {
 			bastionName = name
 			bastionId = id
-
-			if logLevel == "DEBUG" {
-				fmt.Println("Only one bastion found, using it")
-				fmt.Println(bastionName + " (" + bastionId + ")")
-			}
 		}
+
+		if logLevel == "DEBUG" {
+			fmt.Println("Only one bastion found, using it")
+			fmt.Println(bastionName + " (" + bastionId + ")")
+		}
+
 	} else {
 		// There were multiple bastions found so we'll need to know which one to use
 		bastionName = getBastionName(*flagBastionName)

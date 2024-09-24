@@ -1,7 +1,9 @@
 # OCI Shiv
 A tool for finding OCI instances and OKE Kubernetes clusters and then connecting to them via the OCI bastion service.
 
-**Instance example**
+## Quick examples
+
+**Finding and connecting to OCI instances**
 
 Search for instances
 
@@ -24,7 +26,7 @@ Connect via bastion service
 oshiv -i 123.456.789.5 -o ocid1.instance.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
 ```
 
-**Kubernetes cluster example**
+**Finding and connecting to Kubernetes clusters**
 
 Search for clusters
 
@@ -342,7 +344,9 @@ All flags for oshiv:
   -t string
     	tenancy ID name
   -tp int
-    	SSH Tunnel port
+    	SSH tunnel port
+  -tpl int
+    	SSH tunnel local port override
   -u string
     	SSH user (default "opc")
   -v	Show version
@@ -352,26 +356,21 @@ All flags for oshiv:
 
 Style guide: https://go.dev/doc/effective_go
 
-```
-git clone https://github.com/dnlloyd/oshiv
-```
-
 ### Build
 
 ```
 make build
 ```
 
-### Local build/install
-
-```
-go build
-go install
-```
-
 ### Test and push
 
 Test/validate changes, push to your fork, make PR
+
+### Release
+
+```
+make release
+```
 
 ## Future enhancements and updates
 
