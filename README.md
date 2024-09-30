@@ -369,6 +369,10 @@ Test/validate changes, push to your fork, make PR
 ### Release
 
 ```
+git tag -a <VERSION> -m '<COMMENTS>'
+```
+
+```
 make release
 ```
 

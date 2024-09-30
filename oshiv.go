@@ -25,6 +25,7 @@ var version = "undefined" // Version gets automatically updated during build
 var boldBlue = color.New(color.FgCyan, color.Bold)
 var boldYellow = color.New(color.FgYellow, color.Bold)
 var yellow = color.New(color.FgYellow)
+var faint = color.New(color.Faint)
 
 type SessionInfo struct {
 	state bastion.SessionLifecycleStateEnum
@@ -151,10 +152,11 @@ func listCompartmentNames(compartmentInfo map[string]string) {
 	sort.Strings(compartmentNames)
 
 	for _, compartmentName := range compartmentNames {
-		println(compartmentName)
+		fmt.Print(compartmentName)
+		faint.Println(" " + compartmentInfo[compartmentName])
 	}
 
-	fmt.Println("\nTo set compartment, you can export OCI_COMPARTMENT_NAME:")
+	fmt.Println("\nTo set compartment, export OCI_COMPARTMENT_NAME:")
 	yellow.Println("   export OCI_COMPARTMENT_NAME=")
 }
 
@@ -384,7 +386,7 @@ func listBastions(compartmentName string, bastionInfo map[string]string) {
 		fmt.Println(bastionName)
 	}
 
-	fmt.Println("\nTo set bastion name, you can export OCI_BASTION_NAME:")
+	fmt.Println("\nTo set bastion name, export OCI_BASTION_NAME:")
 	yellow.Println("   export OCI_BASTION_NAME=")
 }
 
