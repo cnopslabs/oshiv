@@ -383,7 +383,8 @@ func getBastionInfo(compartmentId string, client bastion.BastionClient) map[stri
 func listBastions(compartmentName string, bastionInfo map[string]string) {
 	boldBlue.Println("Bastions in compartment " + compartmentName)
 	for bastionName := range bastionInfo {
-		fmt.Println(bastionName)
+		fmt.Print(bastionName)
+		faint.Println(" " + bastionInfo[bastionName])
 	}
 
 	fmt.Println("\nTo set bastion name, export OCI_BASTION_NAME:")
