@@ -25,9 +25,9 @@ var version = "undefined" // Version gets automatically updated during build
 
 const logLevel = "INFO" // TODO: switch to logging library
 
-// var boldBlue = color.New(color.FgCyan, color.Bold)
+// var blueBold = color.New(color.FgCyan, color.Bold)
 var blue = color.New(color.FgCyan)
-var boldYellow = color.New(color.FgYellow, color.Bold)
+var yellowBold = color.New(color.FgYellow, color.Bold)
 var yellow = color.New(color.FgYellow)
 
 // var faint = color.New(color.Faint)
@@ -59,9 +59,11 @@ type Instance struct {
 // Sort instances by name
 type instancesByName []Instance
 
-func (insts instancesByName) Len() int           { return len(insts) }
-func (insts instancesByName) Less(i, j int) bool { return insts[i].name < insts[j].name }
-func (insts instancesByName) Swap(i, j int)      { insts[i], insts[j] = insts[j], insts[i] }
+func (instances instancesByName) Len() int           { return len(instances) }
+func (instances instancesByName) Less(i, j int) bool { return instances[i].name < instances[j].name }
+func (instances instancesByName) Swap(i, j int) {
+	instances[i], instances[j] = instances[j], instances[i]
+}
 
 type Cluster struct {
 	name                string
@@ -81,9 +83,9 @@ type Subnet struct {
 // Sort subnets bt CIDR
 type subnetsByCidr []Subnet
 
-func (subs subnetsByCidr) Len() int           { return len(subs) }
-func (subs subnetsByCidr) Less(i, j int) bool { return subs[i].cidr < subs[j].cidr }
-func (subs subnetsByCidr) Swap(i, j int)      { subs[i], subs[j] = subs[j], subs[i] }
+func (subnets subnetsByCidr) Len() int           { return len(subnets) }
+func (subnets subnetsByCidr) Less(i, j int) bool { return subnets[i].cidr < subnets[j].cidr }
+func (subnets subnetsByCidr) Swap(i, j int)      { subnets[i], subnets[j] = subnets[j], subnets[i] }
 
 func checkError(err error) {
 	if err != nil {
@@ -241,23 +243,20 @@ func getInstanceNamesIDs(client core.ComputeClient, compartmentId string) map[st
 	return instances
 }
 
-func getInstances(client core.ComputeClient, compartmentId string) []Instance {
-	// instances := make(map[string]string)
+func getInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) []Instance {
 	var instances []Instance
 
-	initialResponse, err := client.ListInstances(context.Background(), core.ListInstancesRequest{
+	initialResponse, err := computeClient.ListInstances(context.Background(), core.ListInstancesRequest{
 		CompartmentId:  &compartmentId,
 		LifecycleState: core.InstanceLifecycleStateRunning,
 	})
 	checkError(err)
 
 	for _, instance := range initialResponse.Items {
-		// instances[*instance.Id] = *instance.DisplayName
-		// fmt.Println(instance)
 		instance := Instance{
 			*instance.DisplayName,
 			*instance.Id,
-			"123.456.789.0",
+			"0",
 			*instance.AvailabilityDomain,
 			*instance.Shape,
 			*instance.TimeCreated,
@@ -266,7 +265,7 @@ func getInstances(client core.ComputeClient, compartmentId string) []Instance {
 			*instance.ShapeConfig.Vcpus,
 			*instance.ShapeConfig.MemoryInGBs,
 			*instance.Region,
-			*&instance.LifecycleState,
+			instance.LifecycleState,
 		}
 		instances = append(instances, instance)
 	}
@@ -274,7 +273,7 @@ func getInstances(client core.ComputeClient, compartmentId string) []Instance {
 	if initialResponse.OpcNextPage != nil {
 		nextPage := initialResponse.OpcNextPage
 		for {
-			response, err := client.ListInstances(context.Background(), core.ListInstancesRequest{
+			response, err := computeClient.ListInstances(context.Background(), core.ListInstancesRequest{
 				CompartmentId:  &compartmentId,
 				LifecycleState: core.InstanceLifecycleStateRunning,
 				Page:           nextPage,
@@ -282,7 +281,6 @@ func getInstances(client core.ComputeClient, compartmentId string) []Instance {
 			checkError(err)
 
 			for _, instance := range response.Items {
-				// instances[*instance.Id] = *instance.DisplayName
 				instance := Instance{
 					*instance.DisplayName,
 					*instance.Id,
@@ -295,7 +293,7 @@ func getInstances(client core.ComputeClient, compartmentId string) []Instance {
 					*instance.ShapeConfig.Vcpus,
 					*instance.ShapeConfig.MemoryInGBs,
 					*instance.Region,
-					*&instance.LifecycleState,
+					instance.LifecycleState,
 				}
 				instances = append(instances, instance)
 			}
@@ -308,6 +306,30 @@ func getInstances(client core.ComputeClient, compartmentId string) []Instance {
 		}
 	}
 
+	attachments := getVnicAttachments(computeClient, compartmentId)
+	// returns map of instanceId:vnicId
+
+	vNicIdsToIps := getPrivateIps(vnetClient, compartmentId)
+	// returns map of vnicId:privateIp
+
+	var instancesWithIP []Instance
+
+	for _, instance := range instances {
+		vnicId, ok := attachments[instance.id]
+		if ok {
+			if logLevel == "DEBUG" {
+				fmt.Println("VNic ID: " + vnicId)
+			}
+
+			privateIp := vNicIdsToIps[vnicId]
+			instance.ip = privateIp
+			instancesWithIP = append(instancesWithIP, instance) // TODO: Im sure theres a better way to do this using a single slice
+
+		} else {
+			fmt.Println("Unable to lookup VNIC for " + instance.id)
+		}
+	}
+
 	if logLevel == "DEBUG" {
 		fmt.Println("")
 		for _, name := range instances {
@@ -316,7 +338,7 @@ func getInstances(client core.ComputeClient, compartmentId string) []Instance {
 		fmt.Println("")
 	}
 
-	return instances
+	return instancesWithIP
 }
 
 func getClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string) []Cluster {
@@ -397,6 +419,32 @@ func searchInstances(pattern string, instances map[string]string) map[string]str
 	return matches
 }
 
+func searchInstancesStruct(pattern string, instances []Instance) []Instance {
+	var matches []Instance
+
+	// Handle simple wildcard
+	if pattern == "*" {
+		pattern = ".*"
+	}
+
+	for _, instance := range instances {
+		match, _ := regexp.MatchString(pattern, instance.name)
+		if match {
+			// matches[instanceName] = instanceId
+			matches = append(matches, instance)
+		}
+	}
+
+	if logLevel == "DEBUG" {
+		fmt.Println("\nMatches")
+		for _, instance := range matches {
+			fmt.Println(instance)
+		}
+	}
+
+	return matches
+}
+
 func getVnicAttachments(client core.ComputeClient, compartmentId string) map[string]string {
 	attachments := make(map[string]string)
 
@@ -428,11 +476,41 @@ func getVnicAttachments(client core.ComputeClient, compartmentId string) map[str
 	return attachments
 }
 
+// TODO: Evaluate if this is still needed / useful
 func getPrivateIp(client core.VirtualNetworkClient, vnicId string) string {
 	response, err := client.GetVnic(context.Background(), core.GetVnicRequest{VnicId: &vnicId})
 	checkError(err)
 
 	return *response.Vnic.PrivateIp
+}
+
+func getSubnetIds(client core.VirtualNetworkClient, compartmentId string) []string {
+	response, err := client.ListSubnets(context.Background(), core.ListSubnetsRequest{CompartmentId: &compartmentId})
+	checkError(err)
+
+	var subnetIds []string
+
+	for _, subnet := range response.Items {
+		subnetIds = append(subnetIds, *subnet.Id)
+	}
+
+	return subnetIds
+}
+
+func getPrivateIps(client core.VirtualNetworkClient, compartmentId string) map[string]string {
+	vNicIdsToIps := make(map[string]string)
+	subnetIds := getSubnetIds(client, compartmentId)
+
+	for _, subnetId := range subnetIds {
+		response, err := client.ListPrivateIps(context.Background(), core.ListPrivateIpsRequest{SubnetId: &subnetId})
+		checkError(err)
+
+		for _, item := range response.Items {
+			vNicIdsToIps[*item.VnicId] = *item.IpAddress
+		}
+	}
+
+	return vNicIdsToIps
 }
 
 func getCompartmentName(flagCompartmentName string) string {
@@ -667,31 +745,31 @@ func printSshCommands(client bastion.BastionClient, sessionId *string, instanceI
 
 	// TODO: Consider proxy jump flag for commands where applicable - https://www.ateam-oracle.com/post/openssh-proxyjump-with-oci-bastion-service
 	if tunnelPort == 0 {
-		boldYellow.Println("\nTunnel command")
+		yellowBold.Println("\nTunnel command")
 		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
 		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L " + color.RedString("LOCAL_PORT") + ":" + *instanceIp + ":" + color.RedString("REMOTE_PORT"))
 	} else if *localPort != 0 {
-		boldYellow.Println("\nTunnel command")
+		yellowBold.Println("\nTunnel command")
 		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
 		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L " + strconv.Itoa(*localPort) + ":" + *instanceIp + ":" + strconv.Itoa(tunnelPort))
 	} else {
-		boldYellow.Println("\nTunnel command")
+		yellowBold.Println("\nTunnel command")
 		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
 		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L " + strconv.Itoa(tunnelPort) + ":" + *instanceIp + ":" + strconv.Itoa(tunnelPort))
 	}
 
-	boldYellow.Println("\nSCP command")
+	yellowBold.Println("\nSCP command")
 	fmt.Println("scp -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P " + strconv.Itoa(*sshPort) + " \\")
 	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p -p 22 " + bastionHost + "' \\")
 	fmt.Println(color.RedString("SOURCE_PATH ") + *sshUser + "@" + *instanceIp + ":" + color.RedString("TARGET_PATH"))
 
-	boldYellow.Println("\nSSH comand")
+	yellowBold.Println("\nSSH comand")
 	fmt.Println("ssh -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p -p 22 " + bastionHost + "' \\")
 	fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp)
@@ -705,11 +783,11 @@ func printPortFwSshCommands(client bastion.BastionClient, sessionId *string, tar
 	bastionHost := sessionIdStr + "@host." + bastionEndpointUrl.Host
 
 	if *flagOkeClusterId != "" {
-		boldYellow.Println("\nUpdate kube config (One time operation)")
+		yellowBold.Println("\nUpdate kube config (One time operation)")
 		fmt.Println("oci ce cluster create-kubeconfig --cluster-id " + *flagOkeClusterId + " --token-version 2.0.0 --kube-endpoint PRIVATE_ENDPOINT --auth security_token")
 	}
 
-	boldYellow.Println("\nPort Forwarding command")
+	yellowBold.Println("\nPort Forwarding command")
 	fmt.Println("ssh -i \"" + sshIdentityFile + "\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 
 	if tunnelPort == 0 {
@@ -728,7 +806,7 @@ func findAndPrintInstances(computeClient core.ComputeClient, compartmentId strin
 	clusterMatches := searchClusters(pattern, clusters)
 
 	if len(clusterMatches) > 0 {
-		yellow.Println("OKE Clusters")
+		yellowBold.Println("OKE Clusters")
 		for _, cluster := range clusterMatches {
 			blue.Println("Name: " + cluster.name)
 			fmt.Println("Cluster ID: " + cluster.id)
@@ -739,60 +817,86 @@ func findAndPrintInstances(computeClient core.ComputeClient, compartmentId strin
 
 	// Get relevant info for ALL instances
 	// We have to do this because GetInstance/ListInstancesRequest does not allow filtering in the request
-	instances := getInstanceNamesIDs(computeClient, compartmentId)
-	// returns map of instanceId: instanceName
+	instances := getInstances(computeClient, compartmentId, vnetClient)
+	// returns []Instance
 
-	//Search instance info and return instance names and instance IDs of matches on instance name
-	instanceMatches := searchInstances(pattern, instances)
-	// returns map of instanceName: instanceId
+	// Search all instances and return instances that match by name
+	instanceMatches := searchInstancesStruct(pattern, instances)
+	// returns []Instance
 
 	// Get ALL VNIC attachments
 	// Once again, doing this because there is no filtering in the request
 	attachments := getVnicAttachments(computeClient, compartmentId)
 	// returns map of instanceId: vnicId
 
-	// For all matches lookup VNIC ID based on instanceId and then return the private IP associated with the VNIC ID
-	var Instances []Instance
+	vNicIdsToIps := getPrivateIps(vnetClient, compartmentId)
+	// returns map of vnicId:privateIp
 
-	for instanceName, instanceId := range instanceMatches {
-		vnicId, ok := attachments[instanceId]
+	var instancesWithIP []Instance
+
+	for _, instance := range instanceMatches {
+		vnicId, ok := attachments[instance.id]
 		if ok {
 			if logLevel == "DEBUG" {
 				fmt.Println("VNic ID: " + vnicId)
 			}
 
-			privateIp := getPrivateIp(vnetClient, vnicId)
-			var fake_date common.SDKTime
+			privateIp := vNicIdsToIps[vnicId]
 
-			instance := Instance{
-				instanceName,
-				instanceId,
-				privateIp,
-				"",
-				"",
-				fake_date,
-				"",
-				"",
-				0,
-				0,
-				"",
-			}
-
-			Instances = append(Instances, instance)
+			instance.ip = privateIp
+			instancesWithIP = append(instancesWithIP, instance) // TODO: Im sure theres a better way to do this using a single slice
 
 		} else {
-			fmt.Println("Unable to lookup VNIC for " + instanceId)
+			fmt.Println("Unable to lookup VNIC for " + instance.id)
 		}
 	}
 
-	if len(Instances) > 0 {
-		sort.Sort(instancesByName(Instances))
+	if len(instancesWithIP) > 0 {
+		sort.Sort(instancesByName(instancesWithIP))
 
-		yellow.Println("Instances")
-		for _, instance := range Instances {
-			blue.Println("Name: " + instance.name)
-			fmt.Println("Instance ID: " + instance.id)
-			fmt.Println("Private IP: " + instance.ip)
+		yellowBold.Println("Instances")
+		for _, instance := range instancesWithIP {
+			region := instance.region
+			ad := instance.ad
+			strToRemove := "bKwM:" + region + "-" // TODO: This pattern needs to be updated. bKwM is not the universal prefix
+			ad_short := strings.Replace(ad, strToRemove, "", -1)
+
+			fd := instance.fd
+			fd_short := strings.Replace(fd, "FAULT-DOMAIN", "FD", -1)
+
+			fmt.Print("Name: ")
+			blue.Println(instance.name)
+
+			fmt.Print("ID: ")
+			yellow.Println(instance.id)
+
+			fmt.Print("Private IP: ")
+			yellow.Print(instance.ip)
+
+			fmt.Print(" FD: ")
+			yellow.Print(fd_short)
+
+			fmt.Print(" AD: ")
+			yellow.Println(ad_short)
+
+			fmt.Print("Shape: ")
+			yellow.Print(instance.shape)
+
+			fmt.Print(" Mem: ")
+			yellow.Print(instance.mem)
+
+			fmt.Print(" vCPUs: ")
+			yellow.Println(instance.vCPUs)
+
+			fmt.Print("State: ")
+			yellow.Println(instance.state)
+
+			fmt.Print("Created: ")
+			yellow.Println(instance.cDate)
+
+			fmt.Print("Image ID: ")
+			yellow.Println(instance.imageId)
+
 			fmt.Println("")
 		}
 	}
@@ -801,12 +905,8 @@ func findAndPrintInstances(computeClient core.ComputeClient, compartmentId strin
 }
 
 func listInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) {
-	instances := getInstances(computeClient, compartmentId)
-	// fmt.Println(instances)
-	// returns map of instanceId: instanceName
-
-	// attachments := getVnicAttachments(computeClient, compartmentId)
-	// returns map of instanceId: vnicId
+	instances := getInstances(computeClient, compartmentId, vnetClient)
+	// returns []Instance
 
 	for _, instance := range instances {
 		region := instance.region
@@ -840,6 +940,15 @@ func listInstances(computeClient core.ComputeClient, compartmentId string, vnetC
 
 		fmt.Print(" vCPUs: ")
 		yellow.Println(instance.vCPUs)
+
+		fmt.Print("State: ")
+		yellow.Println(instance.state)
+
+		fmt.Print("Created: ")
+		yellow.Println(instance.cDate)
+
+		fmt.Print("Image ID: ")
+		yellow.Println(instance.imageId)
 
 		fmt.Println("")
 	}
@@ -1154,3 +1263,5 @@ func main() {
 		}
 	}
 }
+
+// TODO: Currently all networking function include all VCNs without indicating which VNC and object belongs to. Need to handle VNC ID flag and denoting VNC when flag not passed
