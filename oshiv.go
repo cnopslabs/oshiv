@@ -791,13 +791,13 @@ func printSshCommands(client bastion.BastionClient, sessionId *string, instanceI
 
 	// TODO: Consider proxy jump flag for commands where applicable - https://www.ateam-oracle.com/post/openssh-proxyjump-with-oci-bastion-service
 	if tunnelPort == 0 {
-		yellowBold.Println("\nTunnel command")
+		yellow.Println("\nTunnel command")
 		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
 		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L " + color.RedString("LOCAL_PORT") + ":" + *instanceIp + ":" + color.RedString("REMOTE_PORT"))
 	} else if *localPort != 0 {
-		yellowBold.Println("\nTunnel command")
+		yellow.Println("\nTunnel command")
 		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
@@ -810,12 +810,12 @@ func printSshCommands(client bastion.BastionClient, sessionId *string, instanceI
 		fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp + " -N -L " + strconv.Itoa(tunnelPort) + ":" + *instanceIp + ":" + strconv.Itoa(tunnelPort))
 	}
 
-	yellowBold.Println("\nSCP command")
+	yellow.Println("\nSCP command")
 	fmt.Println("scp -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P " + strconv.Itoa(*sshPort) + " \\")
 	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p -p 22 " + bastionHost + "' \\")
 	fmt.Println(color.RedString("SOURCE_PATH ") + *sshUser + "@" + *instanceIp + ":" + color.RedString("TARGET_PATH"))
 
-	yellowBold.Println("\nSSH comand")
+	yellow.Println("\nSSH comand")
 	fmt.Println("ssh -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p -p 22 " + bastionHost + "' \\")
 	fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp)
@@ -829,11 +829,11 @@ func printPortFwSshCommands(client bastion.BastionClient, sessionId *string, tar
 	bastionHost := sessionIdStr + "@host." + bastionEndpointUrl.Host
 
 	if *flagOkeClusterId != "" {
-		yellowBold.Println("\nUpdate kube config (One time operation)")
+		yellow.Println("\nUpdate kube config (One time operation)")
 		fmt.Println("oci ce cluster create-kubeconfig --cluster-id " + *flagOkeClusterId + " --token-version 2.0.0 --kube-endpoint PRIVATE_ENDPOINT --auth security_token")
 	}
 
-	yellowBold.Println("\nPort Forwarding command")
+	yellow.Println("\nPort Forwarding command")
 	fmt.Println("ssh -i \"" + sshIdentityFile + "\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 
 	if tunnelPort == 0 {
@@ -852,7 +852,7 @@ func findInstances(computeClient core.ComputeClient, compartmentId string, flagS
 	clusterMatches := searchClusters(pattern, clusters)
 
 	if len(clusterMatches) > 0 {
-		yellowBold.Println("OKE Clusters")
+		yellow.Println("OKE Clusters")
 		for _, cluster := range clusterMatches {
 			fmt.Print("Name: ")
 			blue.Println(cluster.name)
