@@ -196,53 +196,6 @@ func listCompartmentNames(compartmentInfo map[string]string) {
 	yellow.Println("   export OCI_COMPARTMENT_NAME=")
 }
 
-// TODO: Update dependency of this function and deprecate in preference of getInstances
-func getInstanceNamesIDs(client core.ComputeClient, compartmentId string) map[string]string {
-	instances := make(map[string]string)
-
-	initialResponse, err := client.ListInstances(context.Background(), core.ListInstancesRequest{
-		CompartmentId:  &compartmentId,
-		LifecycleState: core.InstanceLifecycleStateRunning,
-	})
-	checkError(err)
-
-	for _, instance := range initialResponse.Items {
-		instances[*instance.Id] = *instance.DisplayName
-	}
-
-	if initialResponse.OpcNextPage != nil {
-		nextPage := initialResponse.OpcNextPage
-		for {
-			response, err := client.ListInstances(context.Background(), core.ListInstancesRequest{
-				CompartmentId:  &compartmentId,
-				LifecycleState: core.InstanceLifecycleStateRunning,
-				Page:           nextPage,
-			})
-			checkError(err)
-
-			for _, instance := range response.Items {
-				instances[*instance.Id] = *instance.DisplayName
-			}
-
-			if response.OpcNextPage != nil {
-				nextPage = response.OpcNextPage
-			} else {
-				break
-			}
-		}
-	}
-
-	if logLevel == "DEBUG" {
-		fmt.Println("")
-		for _, name := range instances {
-			fmt.Println(name)
-		}
-		fmt.Println("")
-	}
-
-	return instances
-}
-
 func getInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) []Instance {
 	var instances []Instance
 
@@ -394,32 +347,7 @@ func searchClusters(pattern string, clusters []Cluster) []Cluster {
 	return matches
 }
 
-func searchInstances(pattern string, instances map[string]string) map[string]string {
-	matches := make(map[string]string)
-
-	// Handle simple wildcard
-	if pattern == "*" {
-		pattern = ".*"
-	}
-
-	for instanceId, instanceName := range instances {
-		match, _ := regexp.MatchString(pattern, instanceName)
-		if match {
-			matches[instanceName] = instanceId
-		}
-	}
-
-	if logLevel == "DEBUG" {
-		fmt.Println("\nMatches")
-		for instanceName := range matches {
-			fmt.Println(instanceName)
-		}
-	}
-
-	return matches
-}
-
-func searchInstancesStruct(pattern string, instances []Instance) []Instance {
+func searchInstances(pattern string, instances []Instance) []Instance {
 	var matches []Instance
 
 	// Handle simple wildcard
@@ -476,13 +404,13 @@ func getVnicAttachments(client core.ComputeClient, compartmentId string) map[str
 	return attachments
 }
 
-// TODO: Evaluate if this is still needed / useful
-func getPrivateIp(client core.VirtualNetworkClient, vnicId string) string {
-	response, err := client.GetVnic(context.Background(), core.GetVnicRequest{VnicId: &vnicId})
-	checkError(err)
+// TODO: Evaluate if this could still be useful
+// func getPrivateIp(client core.VirtualNetworkClient, vnicId string) string {
+// 	response, err := client.GetVnic(context.Background(), core.GetVnicRequest{VnicId: &vnicId})
+// 	checkError(err)
 
-	return *response.Vnic.PrivateIp
-}
+// 	return *response.Vnic.PrivateIp
+// }
 
 func getSubnetIds(client core.VirtualNetworkClient, compartmentId string) []string {
 	response, err := client.ListSubnets(context.Background(), core.ListSubnetsRequest{CompartmentId: &compartmentId})
@@ -808,7 +736,8 @@ func findAndPrintInstances(computeClient core.ComputeClient, compartmentId strin
 	if len(clusterMatches) > 0 {
 		yellowBold.Println("OKE Clusters")
 		for _, cluster := range clusterMatches {
-			blue.Println("Name: " + cluster.name)
+			fmt.Print("Name: ")
+			blue.Println(cluster.name)
 			fmt.Println("Cluster ID: " + cluster.id)
 			fmt.Println("Private endpoint: " + cluster.privateEndpointIp + ":" + cluster.privateEndpointPort)
 			fmt.Println("")
@@ -821,7 +750,7 @@ func findAndPrintInstances(computeClient core.ComputeClient, compartmentId strin
 	// returns []Instance
 
 	// Search all instances and return instances that match by name
-	instanceMatches := searchInstancesStruct(pattern, instances)
+	instanceMatches := searchInstances(pattern, instances)
 	// returns []Instance
 
 	// Get ALL VNIC attachments
