@@ -18,14 +18,21 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/containerengine"
 	"github.com/oracle/oci-go-sdk/v65/core"
 	"github.com/oracle/oci-go-sdk/v65/identity"
+	"github.com/rodaine/table"
 )
 
-const logLevel = "INFO"   // TODO: switch to logging library
 var version = "undefined" // Version gets automatically updated during build
-var boldBlue = color.New(color.FgCyan, color.Bold)
+
+const logLevel = "INFO" // TODO: switch to logging library
+
+// var boldBlue = color.New(color.FgCyan, color.Bold)
+var blue = color.New(color.FgCyan)
 var boldYellow = color.New(color.FgYellow, color.Bold)
 var yellow = color.New(color.FgYellow)
-var faint = color.New(color.Faint)
+
+// var faint = color.New(color.Faint)
+var headerFmt = color.New(color.FgCyan, color.Underline).SprintfFunc()
+var columnFmt = color.New(color.FgYellow).SprintfFunc()
 
 type SessionInfo struct {
 	state bastion.SessionLifecycleStateEnum
@@ -35,10 +42,26 @@ type SessionInfo struct {
 }
 
 type Instance struct {
-	name string
-	id   string
-	ip   string
+	name    string
+	id      string
+	ip      string
+	ad      string
+	shape   string
+	cDate   common.SDKTime
+	imageId string
+	fd      string
+	vCPUs   int
+	mem     float32
+	region  string
+	state   core.InstanceLifecycleStateEnum
 }
+
+// Sort instances by name
+type instancesByName []Instance
+
+func (insts instancesByName) Len() int           { return len(insts) }
+func (insts instancesByName) Less(i, j int) bool { return insts[i].name < insts[j].name }
+func (insts instancesByName) Swap(i, j int)      { insts[i], insts[j] = insts[j], insts[i] }
 
 type Cluster struct {
 	name                string
@@ -47,11 +70,20 @@ type Cluster struct {
 	privateEndpointPort string
 }
 
-type instancesByName []Instance
+type Subnet struct {
+	cidr       string
+	name       string
+	access     string
+	subnetType string
+}
 
-func (m instancesByName) Len() int           { return len(m) }
-func (m instancesByName) Less(i, j int) bool { return m[i].name < m[j].name }
-func (m instancesByName) Swap(i, j int)      { m[i], m[j] = m[j], m[i] }
+// TODO: This sorts alphabetically, so not great for CIDR blocks. Prob should revert to sort by name
+// Sort subnets bt CIDR
+type subnetsByCidr []Subnet
+
+func (subs subnetsByCidr) Len() int           { return len(subs) }
+func (subs subnetsByCidr) Less(i, j int) bool { return subs[i].cidr < subs[j].cidr }
+func (subs subnetsByCidr) Swap(i, j int)      { subs[i], subs[j] = subs[j], subs[i] }
 
 func checkError(err error) {
 	if err != nil {
@@ -143,7 +175,8 @@ func getCompartmentInfo(tenancyId string, client identity.IdentityClient) map[st
 }
 
 func listCompartmentNames(compartmentInfo map[string]string) {
-	boldBlue.Println("Compartments")
+	tbl := table.New("Compartment Name", "OCID")
+	tbl.WithHeaderFormatter(headerFmt).WithFirstColumnFormatter(columnFmt)
 
 	compartmentNames := make([]string, 0, len(compartmentInfo))
 	for compartmentName := range compartmentInfo {
@@ -152,15 +185,17 @@ func listCompartmentNames(compartmentInfo map[string]string) {
 	sort.Strings(compartmentNames)
 
 	for _, compartmentName := range compartmentNames {
-		fmt.Print(compartmentName)
-		faint.Println(" " + compartmentInfo[compartmentName])
+		tbl.AddRow(compartmentName, compartmentInfo[compartmentName])
 	}
+
+	tbl.Print()
 
 	fmt.Println("\nTo set compartment, export OCI_COMPARTMENT_NAME:")
 	yellow.Println("   export OCI_COMPARTMENT_NAME=")
 }
 
-func getInstances(client core.ComputeClient, compartmentId string) map[string]string {
+// TODO: Update dependency of this function and deprecate in preference of getInstances
+func getInstanceNamesIDs(client core.ComputeClient, compartmentId string) map[string]string {
 	instances := make(map[string]string)
 
 	initialResponse, err := client.ListInstances(context.Background(), core.ListInstancesRequest{
@@ -185,6 +220,84 @@ func getInstances(client core.ComputeClient, compartmentId string) map[string]st
 
 			for _, instance := range response.Items {
 				instances[*instance.Id] = *instance.DisplayName
+			}
+
+			if response.OpcNextPage != nil {
+				nextPage = response.OpcNextPage
+			} else {
+				break
+			}
+		}
+	}
+
+	if logLevel == "DEBUG" {
+		fmt.Println("")
+		for _, name := range instances {
+			fmt.Println(name)
+		}
+		fmt.Println("")
+	}
+
+	return instances
+}
+
+func getInstances(client core.ComputeClient, compartmentId string) []Instance {
+	// instances := make(map[string]string)
+	var instances []Instance
+
+	initialResponse, err := client.ListInstances(context.Background(), core.ListInstancesRequest{
+		CompartmentId:  &compartmentId,
+		LifecycleState: core.InstanceLifecycleStateRunning,
+	})
+	checkError(err)
+
+	for _, instance := range initialResponse.Items {
+		// instances[*instance.Id] = *instance.DisplayName
+		// fmt.Println(instance)
+		instance := Instance{
+			*instance.DisplayName,
+			*instance.Id,
+			"123.456.789.0",
+			*instance.AvailabilityDomain,
+			*instance.Shape,
+			*instance.TimeCreated,
+			*instance.ImageId,
+			*instance.FaultDomain,
+			*instance.ShapeConfig.Vcpus,
+			*instance.ShapeConfig.MemoryInGBs,
+			*instance.Region,
+			*&instance.LifecycleState,
+		}
+		instances = append(instances, instance)
+	}
+
+	if initialResponse.OpcNextPage != nil {
+		nextPage := initialResponse.OpcNextPage
+		for {
+			response, err := client.ListInstances(context.Background(), core.ListInstancesRequest{
+				CompartmentId:  &compartmentId,
+				LifecycleState: core.InstanceLifecycleStateRunning,
+				Page:           nextPage,
+			})
+			checkError(err)
+
+			for _, instance := range response.Items {
+				// instances[*instance.Id] = *instance.DisplayName
+				instance := Instance{
+					*instance.DisplayName,
+					*instance.Id,
+					"",
+					*instance.AvailabilityDomain,
+					*instance.Shape,
+					*instance.TimeCreated,
+					*instance.ImageId,
+					*instance.FaultDomain,
+					*instance.ShapeConfig.Vcpus,
+					*instance.ShapeConfig.MemoryInGBs,
+					*instance.Region,
+					*&instance.LifecycleState,
+				}
+				instances = append(instances, instance)
 			}
 
 			if response.OpcNextPage != nil {
@@ -381,11 +494,17 @@ func getBastionInfo(compartmentId string, client bastion.BastionClient) map[stri
 }
 
 func listBastions(compartmentName string, bastionInfo map[string]string) {
-	boldBlue.Println("Bastions in compartment " + compartmentName)
+	// blue.Println("Bastions in compartment " + compartmentName)
+	tbl := table.New("Bastion Name", "OCID")
+	tbl.WithHeaderFormatter(headerFmt).WithFirstColumnFormatter(columnFmt)
+
 	for bastionName := range bastionInfo {
-		fmt.Print(bastionName)
-		faint.Println(" " + bastionInfo[bastionName])
+		// fmt.Print(bastionName)
+		// faint.Println(" " + bastionInfo[bastionName])
+		tbl.AddRow(bastionName, bastionInfo[bastionName])
 	}
+
+	tbl.Print()
 
 	fmt.Println("\nTo set bastion name, export OCI_BASTION_NAME:")
 	yellow.Println("   export OCI_BASTION_NAME=")
@@ -440,7 +559,7 @@ func createManagedSshSession(bastionId string, client bastion.BastionClient, tar
 	}
 
 	sessionId := response.Session.Id
-	boldBlue.Println("\nSession ID")
+	blue.Println("\nSession ID")
 	fmt.Println(*sessionId)
 	fmt.Println("")
 
@@ -471,7 +590,7 @@ func createPortFwSession(bastionId string, client bastion.BastionClient, targetI
 	}
 
 	sessionId := response.Session.Id
-	boldBlue.Println("\nSession ID")
+	blue.Println("\nSession ID")
 	fmt.Println(*sessionId)
 	fmt.Println("")
 
@@ -520,7 +639,7 @@ func listActiveSessions(client bastion.BastionClient, bastionId string) {
 	response, err := client.ListSessions(context.Background(), bastion.ListSessionsRequest{BastionId: &bastionId})
 	checkError(err)
 
-	boldBlue.Println("Active bastion sessions")
+	blue.Println("Active bastion sessions")
 	for _, session := range response.Items {
 		sshSessionTargetResourceDetails := session.TargetResourceDetails.(bastion.ManagedSshSessionTargetResourceDetails)
 		instanceName := sshSessionTargetResourceDetails.TargetResourceDisplayName
@@ -602,16 +721,16 @@ func printPortFwSshCommands(client bastion.BastionClient, sessionId *string, tar
 	}
 }
 
-func findAndPrintMatches(computeClient core.ComputeClient, compartmentId string, flagSearchString string, vnetClient core.VirtualNetworkClient, containerEngineClient containerengine.ContainerEngineClient) {
+func findAndPrintInstances(computeClient core.ComputeClient, compartmentId string, flagSearchString string, vnetClient core.VirtualNetworkClient, containerEngineClient containerengine.ContainerEngineClient) {
 	pattern := flagSearchString
 
 	clusters := getClusters(containerEngineClient, compartmentId)
 	clusterMatches := searchClusters(pattern, clusters)
 
 	if len(clusterMatches) > 0 {
-		boldYellow.Println("OKE Clusters")
+		yellow.Println("OKE Clusters")
 		for _, cluster := range clusterMatches {
-			boldBlue.Println("Name: " + cluster.name)
+			blue.Println("Name: " + cluster.name)
 			fmt.Println("Cluster ID: " + cluster.id)
 			fmt.Println("Private endpoint: " + cluster.privateEndpointIp + ":" + cluster.privateEndpointPort)
 			fmt.Println("")
@@ -620,7 +739,7 @@ func findAndPrintMatches(computeClient core.ComputeClient, compartmentId string,
 
 	// Get relevant info for ALL instances
 	// We have to do this because GetInstance/ListInstancesRequest does not allow filtering in the request
-	instances := getInstances(computeClient, compartmentId)
+	instances := getInstanceNamesIDs(computeClient, compartmentId)
 	// returns map of instanceId: instanceName
 
 	//Search instance info and return instance names and instance IDs of matches on instance name
@@ -643,7 +762,22 @@ func findAndPrintMatches(computeClient core.ComputeClient, compartmentId string,
 			}
 
 			privateIp := getPrivateIp(vnetClient, vnicId)
-			instance := Instance{instanceName, instanceId, privateIp}
+			var fake_date common.SDKTime
+
+			instance := Instance{
+				instanceName,
+				instanceId,
+				privateIp,
+				"",
+				"",
+				fake_date,
+				"",
+				"",
+				0,
+				0,
+				"",
+			}
+
 			Instances = append(Instances, instance)
 
 		} else {
@@ -654,9 +788,9 @@ func findAndPrintMatches(computeClient core.ComputeClient, compartmentId string,
 	if len(Instances) > 0 {
 		sort.Sort(instancesByName(Instances))
 
-		boldYellow.Println("Instances")
+		yellow.Println("Instances")
 		for _, instance := range Instances {
-			boldBlue.Println("Name: " + instance.name)
+			blue.Println("Name: " + instance.name)
 			fmt.Println("Instance ID: " + instance.id)
 			fmt.Println("Private IP: " + instance.ip)
 			fmt.Println("")
@@ -666,28 +800,125 @@ func findAndPrintMatches(computeClient core.ComputeClient, compartmentId string,
 	os.Exit(0)
 }
 
+func listInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) {
+	instances := getInstances(computeClient, compartmentId)
+	// fmt.Println(instances)
+	// returns map of instanceId: instanceName
+
+	// attachments := getVnicAttachments(computeClient, compartmentId)
+	// returns map of instanceId: vnicId
+
+	for _, instance := range instances {
+		region := instance.region
+		ad := instance.ad
+		strToRemove := "bKwM:" + region + "-"
+		ad_short := strings.Replace(ad, strToRemove, "", -1)
+
+		fd := instance.fd
+		fd_short := strings.Replace(fd, "FAULT-DOMAIN", "FD", -1)
+
+		fmt.Print("Name: ")
+		blue.Println(instance.name)
+
+		fmt.Print("ID: ")
+		yellow.Println(instance.id)
+
+		fmt.Print("Private IP: ")
+		yellow.Print(instance.ip)
+
+		fmt.Print(" FD: ")
+		yellow.Print(fd_short)
+
+		fmt.Print(" AD: ")
+		yellow.Println(ad_short)
+
+		fmt.Print("Shape: ")
+		yellow.Print(instance.shape)
+
+		fmt.Print(" Mem: ")
+		yellow.Print(instance.mem)
+
+		fmt.Print(" vCPUs: ")
+		yellow.Println(instance.vCPUs)
+
+		fmt.Println("")
+	}
+}
+
+func getSubcommand(firstArg string) string {
+	if strings.HasPrefix(firstArg, "-") {
+		return ""
+	} else {
+		return firstArg
+	}
+}
+
+func listSubnets(client core.VirtualNetworkClient, compartmentId string) {
+	response, err := client.ListSubnets(context.Background(), core.ListSubnetsRequest{CompartmentId: &compartmentId})
+	checkError(err)
+
+	var Subnets []Subnet
+	var subnetAccess string
+	var subnetType string
+
+	for _, s := range response.Items {
+		if *s.ProhibitInternetIngress && *s.ProhibitPublicIpOnVnic {
+			subnetAccess = "private"
+		} else if !*s.ProhibitInternetIngress && !*s.ProhibitPublicIpOnVnic {
+			subnetAccess = "public"
+		} else {
+			subnetAccess = "?"
+		}
+
+		if s.AvailabilityDomain == nil {
+			subnetType = "Regional"
+		} else {
+			subnetType = *s.AvailabilityDomain
+		}
+
+		subnet := Subnet{*s.CidrBlock, *s.DisplayName, subnetAccess, subnetType}
+		Subnets = append(Subnets, subnet)
+	}
+
+	if len(Subnets) > 0 {
+		sort.Sort(subnetsByCidr(Subnets))
+	}
+
+	tbl := table.New("CIDR", "Name", "Access", "Type")
+	tbl.WithHeaderFormatter(headerFmt).WithFirstColumnFormatter(columnFmt)
+
+	for _, subnet := range Subnets {
+		tbl.AddRow(subnet.cidr, subnet.name, subnet.access, subnet.subnetType)
+	}
+
+	tbl.Print()
+}
+
 func main() {
-	// TODO: switch to more mature cmd line flag parsing library
+	// Global flags
+	flagVersion := flag.Bool("v", false, "Show version")
 	flagTenancyId := flag.String("t", "", "tenancy ID name")
 
 	flagListCompartments := flag.Bool("lc", false, "list compartments")
 	flagListBastions := flag.Bool("lb", false, "list bastions")
+	flagListSessions := flag.Bool("ls", false, "list sessions")
 
 	flagSearchString := flag.String("f", "", "search string to search for instance")
-
-	flagInstanceId := flag.String("o", "", "instance ID of host to connect to")
-	flagTargetIp := flag.String("i", "", "IP address of host/endpoint to connect to")
 
 	flagCompartmentName := flag.String("c", "", "compartment name")
 	flagBastionName := flag.String("b", "", "bastion name")
 
-	flagSessionId := flag.String("s", "", "Session ID to check for")
-	flagListSessions := flag.Bool("ls", false, "list sessions")
+	flagInstanceId := flag.String("o", "", "instance ID of host to connect to")
+	flagOkeClusterId := flag.String("oke", "", "OKE cluster ID")
+	flagTargetIp := flag.String("i", "", "IP address of host/endpoint to connect to")
+
 	flagSshUser := flag.String("u", "opc", "SSH user")
 	flagSshPort := flag.Int("p", 22, "SSH port")
 	flagSshPrivateKey := flag.String("k", "", "path to SSH private key (identity file)")
 	flagSshPublicKey := flag.String("e", "", "path to SSH public key")
 	flagSessionTtl := flag.Int("l", 10800, "Session TTL (seconds)")
+
+	flagSessionId := flag.String("s", "", "Session ID to check for")
 
 	flagCreatePortFwSession := flag.Bool("fw", false, "Create an SSH port forward session")
 
@@ -697,10 +928,6 @@ func main() {
 
 	// This will override the local port for both managed SSH and and port forward sessions
 	flagSshTunnelPortOverrideLocal := flag.Int("tpl", 0, "SSH tunnel local port override")
-
-	flagOkeClusterId := flag.String("oke", "", "OKE cluster ID")
-
-	flagVersion := flag.Bool("v", false, "Show version")
 
 	// Extend flag's default usage function
 	flag.Usage = func() {
@@ -741,145 +968,189 @@ func main() {
 
 	flag.Parse()
 
+	// Subcommands and flags
+	computeCmd := flag.NewFlagSet("compute", flag.ExitOnError)
+	flagComputeList := computeCmd.Bool("l", false, "List all instances")
+	flagComputeFind := computeCmd.String("f", "", "Find instance by search pattern")
+
+	subnetsCmd := flag.NewFlagSet("subnets", flag.ExitOnError)
+	flagSubnetsList := subnetsCmd.Bool("l", false, "List all subnets")
+	flagSubnetsFind := subnetsCmd.String("f", "", "Find subnets by search pattern")
+
+	subcommand := getSubcommand(os.Args[1])
+
+	// Main program logic starts here
+	// Print version
 	if *flagVersion {
 		fmt.Println(version)
 		os.Exit(0)
 	}
 
+	// Initialize OCI clients
 	identityClient, bastionClient, computeClient, vnetClient, containerEngineClient := initializeOciClients()
 
+	// Attempt to get tenancy ID from input and validate it against OCI API
 	tenancyId := getTenancyId(*flagTenancyId, identityClient)
+	// All actions except listing compartments require a compartment ID, compartment info will contain a map of compartment names and IDs
 	compartmentInfo := getCompartmentInfo(tenancyId, identityClient)
 
+	// List all compartments
 	if *flagListCompartments {
 		listCompartmentNames(compartmentInfo)
 		os.Exit(0)
 	}
 
-	// Anything past this point requires a compartment and bastion info
+	// <-- Anything beyond this point requires a compartment -->
+	// Attempt to get compartment name from input then lookup compartment ID
 	compartmentName := getCompartmentName(*flagCompartmentName)
 	compartmentId := getCompartmentId(compartmentInfo, compartmentName)
-	bastionInfo := getBastionInfo(compartmentId, bastionClient)
 
-	if *flagSearchString != "" {
-		findAndPrintMatches(computeClient, compartmentId, *flagSearchString, vnetClient, containerEngineClient)
-	}
-
-	if *flagListBastions {
-		listBastions(compartmentName, bastionInfo)
+	// Subcommands
+	switch subcommand {
+	case "compute":
+		computeCmd.Parse(os.Args[2:])
+		if *flagComputeList {
+			listInstances(computeClient, compartmentId, vnetClient)
+		} else if *flagComputeFind != "" {
+			findAndPrintInstances(computeClient, compartmentId, *flagComputeFind, vnetClient, containerEngineClient)
+		}
 		os.Exit(0)
-	}
 
-	// Anything past this point requires a bastion
-	var bastionName string
-	var bastionId string
-
-	// If there is only one bastion, no need to require bastion name as input
-	if len(bastionInfo) == 1 {
-		for name, id := range bastionInfo {
-			bastionName = name
-			bastionId = id
+	case "subnets":
+		subnetsCmd.Parse(os.Args[2:])
+		if *flagSubnetsList {
+			listSubnets(vnetClient, compartmentId)
+		} else if *flagSubnetsFind != "" {
+			fmt.Println("Subnet search is not yet enabled, listing all subnets. Use grep!")
+			listSubnets(vnetClient, compartmentId)
 		}
-
-		if logLevel == "DEBUG" {
-			fmt.Println("Only one bastion found, using it")
-			fmt.Println(bastionName + " (" + bastionId + ")")
-		}
-
-	} else {
-		// There were multiple bastions found so we'll need to know which one to use
-		bastionName = getBastionName(*flagBastionName)
-		bastionId = bastionInfo[bastionName]
-	}
-
-	getBastion(bastionName, bastionId, bastionClient)
-
-	if *flagListSessions {
-		listActiveSessions(bastionClient, bastionId)
 		os.Exit(0)
-	}
 
-	homeDir := getHomeDir()
-
-	var sshPrivateKeyFileLocation string
-	if *flagSshPrivateKey == "" {
-		// TODO: move this default to flags
-		sshPrivateKeyFileLocation = homeDir + "/.ssh/id_rsa"
-		if logLevel == "DEBUG" {
-			fmt.Println("Using default SSH private key file at " + sshPrivateKeyFileLocation)
+	// If no subcommand is given, we are in bastion connection mode (except for legacy instance search)
+	case "":
+		if *flagSearchString != "" {
+			findAndPrintInstances(computeClient, compartmentId, *flagSearchString, vnetClient, containerEngineClient)
 		}
-	} else {
-		sshPrivateKeyFileLocation = *flagSshPrivateKey
-	}
 
-	var sshPublicKeyFileLocation string
-	if *flagSshPublicKey == "" {
-		// TODO: move this default to flags
-		sshPublicKeyFileLocation = homeDir + "/.ssh/id_rsa.pub"
-		if logLevel == "DEBUG" {
-			fmt.Println("\nUsing default SSH public key file at " + sshPublicKeyFileLocation)
+		// <-- Anything beyond this point requires bastion information -->
+		bastionInfo := getBastionInfo(compartmentId, bastionClient)
+
+		if *flagListBastions {
+			listBastions(compartmentName, bastionInfo)
+			os.Exit(0)
 		}
-	} else {
-		sshPublicKeyFileLocation = *flagSshPublicKey
-	}
 
-	publicKeyContent := getSshPubKeyContents(sshPublicKeyFileLocation)
+		// Anything past this point requires a bastion
+		var bastionName string
+		var bastionId string
 
-	var sshTunnelPort int
-	if *flagOkeClusterId != "" {
-		sshTunnelPort = 6443
-	} else {
-		sshTunnelPort = *flagSshTunnelPort
-	}
+		// If there is only one bastion, no need to require bastion name as input
+		if len(bastionInfo) == 1 {
+			for name, id := range bastionInfo {
+				bastionName = name
+				bastionId = id
+			}
 
-	// Create bastion sessions
-	var sessionId *string
-	if *flagSessionId == "" {
-		// No session ID passed, create a new session
-		if *flagCreatePortFwSession || *flagOkeClusterId != "" {
+			if logLevel == "DEBUG" {
+				fmt.Println("Only one bastion found, using it")
+				fmt.Println(bastionName + " (" + bastionId + ")")
+			}
 
-			sessionId = createPortFwSession(bastionId, bastionClient, *flagTargetIp, publicKeyContent, sshTunnelPort, *flagSessionTtl)
 		} else {
-			sessionId = createManagedSshSession(bastionId, bastionClient, *flagInstanceId, *flagTargetIp, publicKeyContent, *flagSshUser, *flagSshPort, *flagSessionTtl)
+			// There were multiple bastions found so we'll need to know which one to use
+			bastionName = getBastionName(*flagBastionName)
+			bastionId = bastionInfo[bastionName]
 		}
-	} else {
-		// Check for existing session by session ID
-		fmt.Println("Session ID passed, checking session...")
-		sessionId = flagSessionId
-		sessionInfo := checkSession(bastionClient, sessionId, *flagCreatePortFwSession || *flagOkeClusterId != "")
 
-		if sessionInfo.state == "ACTIVE" {
-			if *flagCreatePortFwSession {
-				printPortFwSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.port, sshPrivateKeyFileLocation, sshTunnelPort, *flagSshTunnelPortOverrideLocal, flagOkeClusterId)
-			} else {
-				printSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.user, &sessionInfo.port, sshPrivateKeyFileLocation, sshTunnelPort, flagSshTunnelPortOverrideLocal)
+		getBastion(bastionName, bastionId, bastionClient)
+
+		if *flagListSessions {
+			listActiveSessions(bastionClient, bastionId)
+			os.Exit(0)
+		}
+
+		homeDir := getHomeDir()
+
+		var sshPrivateKeyFileLocation string
+		if *flagSshPrivateKey == "" {
+			// TODO: move this default to flags
+			sshPrivateKeyFileLocation = homeDir + "/.ssh/id_rsa"
+			if logLevel == "DEBUG" {
+				fmt.Println("Using default SSH private key file at " + sshPrivateKeyFileLocation)
 			}
 		} else {
-			fmt.Println("Session is no longer active. Current state is: " + sessionInfo.state)
+			sshPrivateKeyFileLocation = *flagSshPrivateKey
 		}
 
-		os.Exit(0)
-	}
-
-	sessionInfo := checkSession(bastionClient, sessionId, *flagCreatePortFwSession || *flagOkeClusterId != "")
-
-	for sessionInfo.state != "ACTIVE" {
-		if sessionInfo.state == "DELETED" {
-			fmt.Println("\nSession has been deleted, exiting")
-			fmt.Println("State: " + sessionInfo.state)
-			fmt.Println("\nSession Info")
-			fmt.Println(sessionInfo)
-			os.Exit(1)
+		var sshPublicKeyFileLocation string
+		if *flagSshPublicKey == "" {
+			// TODO: move this default to flags
+			sshPublicKeyFileLocation = homeDir + "/.ssh/id_rsa.pub"
+			if logLevel == "DEBUG" {
+				fmt.Println("\nUsing default SSH public key file at " + sshPublicKeyFileLocation)
+			}
 		} else {
-			fmt.Println("Session not yet active, waiting... (State: " + sessionInfo.state + ")")
-			time.Sleep(10 * time.Second)
-			sessionInfo = checkSession(bastionClient, sessionId, *flagCreatePortFwSession || *flagOkeClusterId != "")
+			sshPublicKeyFileLocation = *flagSshPublicKey
 		}
-	}
 
-	if *flagCreatePortFwSession || *flagOkeClusterId != "" {
-		printPortFwSshCommands(bastionClient, sessionId, flagTargetIp, flagSshPort, sshPrivateKeyFileLocation, sshTunnelPort, *flagSshTunnelPortOverrideLocal, flagOkeClusterId)
-	} else {
-		printSshCommands(bastionClient, sessionId, flagTargetIp, flagSshUser, flagSshPort, sshPrivateKeyFileLocation, sshTunnelPort, flagSshTunnelPortOverrideLocal)
+		publicKeyContent := getSshPubKeyContents(sshPublicKeyFileLocation)
+
+		var sshTunnelPort int
+		if *flagOkeClusterId != "" {
+			sshTunnelPort = 6443
+		} else {
+			sshTunnelPort = *flagSshTunnelPort
+		}
+
+		// Create bastion sessions
+		var sessionId *string
+		if *flagSessionId == "" {
+			// No session ID passed, create a new session
+			if *flagCreatePortFwSession || *flagOkeClusterId != "" {
+
+				sessionId = createPortFwSession(bastionId, bastionClient, *flagTargetIp, publicKeyContent, sshTunnelPort, *flagSessionTtl)
+			} else {
+				sessionId = createManagedSshSession(bastionId, bastionClient, *flagInstanceId, *flagTargetIp, publicKeyContent, *flagSshUser, *flagSshPort, *flagSessionTtl)
+			}
+		} else {
+			// Check for existing session by session ID
+			fmt.Println("Session ID passed, checking session...")
+			sessionId = flagSessionId
+			sessionInfo := checkSession(bastionClient, sessionId, *flagCreatePortFwSession || *flagOkeClusterId != "")
+
+			if sessionInfo.state == "ACTIVE" {
+				if *flagCreatePortFwSession {
+					printPortFwSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.port, sshPrivateKeyFileLocation, sshTunnelPort, *flagSshTunnelPortOverrideLocal, flagOkeClusterId)
+				} else {
+					printSshCommands(bastionClient, sessionId, &sessionInfo.ip, &sessionInfo.user, &sessionInfo.port, sshPrivateKeyFileLocation, sshTunnelPort, flagSshTunnelPortOverrideLocal)
+				}
+			} else {
+				fmt.Println("Session is no longer active. Current state is: " + sessionInfo.state)
+			}
+
+			os.Exit(0)
+		}
+
+		sessionInfo := checkSession(bastionClient, sessionId, *flagCreatePortFwSession || *flagOkeClusterId != "")
+
+		for sessionInfo.state != "ACTIVE" {
+			if sessionInfo.state == "DELETED" {
+				fmt.Println("\nSession has been deleted, exiting")
+				fmt.Println("State: " + sessionInfo.state)
+				fmt.Println("\nSession Info")
+				fmt.Println(sessionInfo)
+				os.Exit(1)
+			} else {
+				fmt.Println("Session not yet active, waiting... (State: " + sessionInfo.state + ")")
+				time.Sleep(10 * time.Second)
+				sessionInfo = checkSession(bastionClient, sessionId, *flagCreatePortFwSession || *flagOkeClusterId != "")
+			}
+		}
+
+		if *flagCreatePortFwSession || *flagOkeClusterId != "" {
+			printPortFwSshCommands(bastionClient, sessionId, flagTargetIp, flagSshPort, sshPrivateKeyFileLocation, sshTunnelPort, *flagSshTunnelPortOverrideLocal, flagOkeClusterId)
+		} else {
+			printSshCommands(bastionClient, sessionId, flagTargetIp, flagSshUser, flagSshPort, sshPrivateKeyFileLocation, sshTunnelPort, flagSshTunnelPortOverrideLocal)
+		}
 	}
 }
