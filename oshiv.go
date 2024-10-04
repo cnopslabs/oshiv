@@ -30,7 +30,7 @@ var blue = color.New(color.FgCyan)
 var yellowBold = color.New(color.FgYellow, color.Bold)
 var yellow = color.New(color.FgYellow)
 
-// var faint = color.New(color.Faint)
+var faint = color.New(color.Faint)
 var headerFmt = color.New(color.FgCyan, color.Underline).SprintfFunc()
 var columnFmt = color.New(color.FgYellow).SprintfFunc()
 
@@ -86,6 +86,15 @@ type subnetsByCidr []Subnet
 func (subnets subnetsByCidr) Len() int           { return len(subnets) }
 func (subnets subnetsByCidr) Less(i, j int) bool { return subnets[i].cidr < subnets[j].cidr }
 func (subnets subnetsByCidr) Swap(i, j int)      { subnets[i], subnets[j] = subnets[j], subnets[i] }
+
+type Image struct {
+	name        string
+	id          string
+	cDate       common.SDKTime
+	freeTags    map[string]string
+	definedTags map[string]map[string]interface{}
+	launchMode  core.ImageLaunchModeEnum
+}
 
 func checkError(err error) {
 	if err != nil {
@@ -294,6 +303,117 @@ func getInstances(computeClient core.ComputeClient, compartmentId string, vnetCl
 	return instancesWithIP
 }
 
+func getImages(computeClient core.ComputeClient, compartmentId string) []Image {
+	var images []Image
+	var pageCount int
+	pageCount = 0
+
+	// Todo: pages
+	fmt.Println(compartmentId)
+	fmt.Println(pageCount)
+
+	initialResponse, err := computeClient.ListImages(context.Background(), core.ListImagesRequest{CompartmentId: &compartmentId})
+	checkError(err)
+
+	for _, item := range initialResponse.Items {
+		pageCount += 1
+		fmt.Println(pageCount)
+		// if item.LaunchMode == core.ImageLaunchModeCustom {
+		image := Image{
+			*item.DisplayName,
+			*item.Id,
+			*item.TimeCreated,
+			item.FreeformTags,
+			item.DefinedTags,
+			item.LaunchMode,
+		}
+
+		images = append(images, image)
+		// }
+	}
+
+	if initialResponse.OpcNextPage != nil {
+		pageCount += 1
+		fmt.Println(pageCount)
+
+		nextPage := initialResponse.OpcNextPage
+		for {
+			response, err := computeClient.ListImages(context.Background(), core.ListImagesRequest{CompartmentId: &compartmentId, Page: nextPage})
+			checkError(err)
+
+			for _, item := range initialResponse.Items {
+				// if item.LaunchMode == core.ImageLaunchModeCustom {
+				image := Image{
+					*item.DisplayName,
+					*item.Id,
+					*item.TimeCreated,
+					item.FreeformTags,
+					item.DefinedTags,
+					item.LaunchMode,
+				}
+
+				images = append(images, image)
+				// }
+			}
+
+			if response.OpcNextPage != nil {
+				nextPage = response.OpcNextPage
+			} else {
+				break
+			}
+		}
+	}
+
+	fmt.Println(strconv.Itoa(pageCount) + "pages")
+	return images
+}
+
+func getImage(computeClient core.ComputeClient, imageId string) Image {
+	var image Image
+
+	response, err := computeClient.GetImage(context.Background(), core.GetImageRequest{ImageId: &imageId})
+	checkError(err)
+
+	image = Image{
+		*response.DisplayName,
+		*response.Id,
+		*response.TimeCreated,
+		response.FreeformTags, // TODO: sort tags
+		response.DefinedTags,  // TODO: sort tags
+		response.LaunchMode,
+	}
+
+	return image
+}
+
+func listImages(computeClient core.ComputeClient, compartmentId string) {
+	images := getImages(computeClient, compartmentId)
+
+	for _, image := range images {
+		fmt.Print("Name: ")
+		blue.Println(image.name)
+
+		fmt.Print("ID: ")
+		yellow.Println(image.id)
+
+		fmt.Print("Create date: ")
+		yellow.Println(image.cDate)
+
+		fmt.Println("Tags: ")
+
+		for k, v := range image.freeTags {
+			yellow.Println(k + ": " + v)
+		}
+
+		fmt.Print("Launch mode: ")
+		yellow.Println(image.launchMode)
+
+		fmt.Println("")
+	}
+
+	fmt.Println(strconv.Itoa(len(images)) + " images found")
+}
+
 func getClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string) []Cluster {
 	var Clusters []Cluster
 
@@ -404,13 +524,12 @@ func getVnicAttachments(client core.ComputeClient, compartmentId string) map[str
 	return attachments
 }
 
-// TODO: Evaluate if this could still be useful
-// func getPrivateIp(client core.VirtualNetworkClient, vnicId string) string {
-// 	response, err := client.GetVnic(context.Background(), core.GetVnicRequest{VnicId: &vnicId})
-// 	checkError(err)
+func getPrivateIp(client core.VirtualNetworkClient, vnicId string) string {
+	response, err := client.GetVnic(context.Background(), core.GetVnicRequest{VnicId: &vnicId})
+	checkError(err)
 
-// 	return *response.Vnic.PrivateIp
-// }
+	return *response.Vnic.PrivateIp
+}
 
 func getSubnetIds(client core.VirtualNetworkClient, compartmentId string) []string {
 	response, err := client.ListSubnets(context.Background(), core.ListSubnetsRequest{CompartmentId: &compartmentId})
@@ -499,8 +618,7 @@ func getBastionInfo(compartmentId string, client bastion.BastionClient) map[stri
 	return bastionInfo
 }
 
-func listBastions(compartmentName string, bastionInfo map[string]string) {
-	// blue.Println("Bastions in compartment " + compartmentName)
+func listBastions(bastionInfo map[string]string) {
 	tbl := table.New("Bastion Name", "OCID")
 	tbl.WithHeaderFormatter(headerFmt).WithFirstColumnFormatter(columnFmt)
 
@@ -727,7 +845,7 @@ func printPortFwSshCommands(client bastion.BastionClient, sessionId *string, tar
 	}
 }
 
-func findAndPrintInstances(computeClient core.ComputeClient, compartmentId string, flagSearchString string, vnetClient core.VirtualNetworkClient, containerEngineClient containerengine.ContainerEngineClient) {
+func findInstances(computeClient core.ComputeClient, compartmentId string, flagSearchString string, vnetClient core.VirtualNetworkClient, containerEngineClient containerengine.ContainerEngineClient) {
 	pattern := flagSearchString
 
 	clusters := getClusters(containerEngineClient, compartmentId)
@@ -758,7 +876,7 @@ func findAndPrintInstances(computeClient core.ComputeClient, compartmentId strin
 	attachments := getVnicAttachments(computeClient, compartmentId)
 	// returns map of instanceId: vnicId
 
-	vNicIdsToIps := getPrivateIps(vnetClient, compartmentId)
+	// vNicIdsToIps := getPrivateIps(vnetClient, compartmentId) // This is inefficient when instance search results are small, resort to getPrivateIp
 	// returns map of vnicId:privateIp
 
 	var instancesWithIP []Instance
@@ -770,7 +888,8 @@ func findAndPrintInstances(computeClient core.ComputeClient, compartmentId strin
 				fmt.Println("VNic ID: " + vnicId)
 			}
 
-			privateIp := vNicIdsToIps[vnicId]
+			// privateIp := vNicIdsToIps[vnicId]
+			privateIp := getPrivateIp(vnetClient, vnicId)
 
 			instance.ip = privateIp
 			instancesWithIP = append(instancesWithIP, instance) // TODO: Im sure theres a better way to do this using a single slice
@@ -783,7 +902,10 @@ func findAndPrintInstances(computeClient core.ComputeClient, compartmentId strin
 	if len(instancesWithIP) > 0 {
 		sort.Sort(instancesByName(instancesWithIP))
 
-		yellowBold.Println("Instances")
+		if len(clusterMatches) > 0 {
+			yellowBold.Println("Instances")
+		}
+
 		for _, instance := range instancesWithIP {
 			region := instance.region
 			ad := instance.ad
@@ -823,9 +945,32 @@ func findAndPrintInstances(computeClient core.ComputeClient, compartmentId strin
 			fmt.Print("Created: ")
 			yellow.Println(instance.cDate)
 
+			image := getImage(computeClient, instance.imageId)
+
+			fmt.Print("Image Name: ")
+			yellow.Println(image.name)
+
 			fmt.Print("Image ID: ")
 			yellow.Println(instance.imageId)
 
+			fmt.Println("Free form image Tags: ")
+
+			for name, value := range image.freeTags {
+				faint.Print(name + ": " + value + " | ")
+			}
+
+			fmt.Println("")
+
+			fmt.Println("Defined image Tags: ")
+			for tagNs, tags := range image.definedTags {
+				// if tagNs != "ohai_required" {
+				for key, value := range tags {
+					faint.Print(tagNs + "." + key + ": " + value.(string) + " | ")
+				}
+				// }
+			}
+
+			fmt.Println("")
 			fmt.Println("")
 		}
 	}
@@ -1011,6 +1156,10 @@ func main() {
 	flagComputeList := computeCmd.Bool("l", false, "List all instances")
 	flagComputeFind := computeCmd.String("f", "", "Find instance by search pattern")
 
+	imageCmd := flag.NewFlagSet("image", flag.ExitOnError)
+	flagImageList := imageCmd.Bool("l", false, "List all images")
+	flagImageFind := imageCmd.String("f", "", "Find images by search pattern")
+
 	subnetsCmd := flag.NewFlagSet("subnets", flag.ExitOnError)
 	flagSubnetsList := subnetsCmd.Bool("l", false, "List all subnets")
 	flagSubnetsFind := subnetsCmd.String("f", "", "Find subnets by search pattern")
@@ -1050,7 +1199,17 @@ func main() {
 		if *flagComputeList {
 			listInstances(computeClient, compartmentId, vnetClient)
 		} else if *flagComputeFind != "" {
-			findAndPrintInstances(computeClient, compartmentId, *flagComputeFind, vnetClient, containerEngineClient)
+			findInstances(computeClient, compartmentId, *flagComputeFind, vnetClient, containerEngineClient)
+		}
+		os.Exit(0)
+
+	case "image":
+		imageCmd.Parse(os.Args[2:])
+		if *flagImageList {
+			listImages(computeClient, compartmentId)
+		} else if *flagImageFind != "" {
+			fmt.Println("Image search is not yet enabled, listing all images. Use grep!")
+			listImages(computeClient, compartmentId)
 		}
 		os.Exit(0)
 
@@ -1067,14 +1226,14 @@ func main() {
 	// If no subcommand is given, we are in bastion connection mode (except for legacy instance search)
 	case "":
 		if *flagSearchString != "" {
-			findAndPrintInstances(computeClient, compartmentId, *flagSearchString, vnetClient, containerEngineClient)
+			findInstances(computeClient, compartmentId, *flagSearchString, vnetClient, containerEngineClient)
 		}
 
 		// <-- Anything beyond this point requires bastion information -->
 		bastionInfo := getBastionInfo(compartmentId, bastionClient)
 
 		if *flagListBastions {
-			listBastions(compartmentName, bastionInfo)
+			listBastions(bastionInfo)
 			os.Exit(0)
 		}
 
