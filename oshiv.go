@@ -21,15 +21,13 @@ import (
 	"github.com/rodaine/table"
 )
 
+const logLevel = "INFO"   // TODO: switch to logging library
 var version = "undefined" // Version gets automatically updated during build
-
-const logLevel = "INFO" // TODO: switch to logging library
 
 // var blueBold = color.New(color.FgCyan, color.Bold)
 var blue = color.New(color.FgCyan)
 var yellowBold = color.New(color.FgYellow, color.Bold)
 var yellow = color.New(color.FgYellow)
-
 var faint = color.New(color.Faint)
 var headerFmt = color.New(color.FgCyan, color.Underline).SprintfFunc()
 var columnFmt = color.New(color.FgYellow).SprintfFunc()
@@ -39,6 +37,22 @@ type SessionInfo struct {
 	ip    string
 	user  string
 	port  int
+}
+
+type Cluster struct {
+	name                string
+	id                  string
+	privateEndpointIp   string
+	privateEndpointPort string
+}
+
+type Image struct {
+	name        string
+	id          string
+	cDate       common.SDKTime
+	freeTags    map[string]string
+	definedTags map[string]map[string]interface{}
+	launchMode  core.ImageLaunchModeEnum
 }
 
 type Instance struct {
@@ -65,13 +79,6 @@ func (instances instancesByName) Swap(i, j int) {
 	instances[i], instances[j] = instances[j], instances[i]
 }
 
-type Cluster struct {
-	name                string
-	id                  string
-	privateEndpointIp   string
-	privateEndpointPort string
-}
-
 type Subnet struct {
 	cidr       string
 	name       string
@@ -86,15 +93,6 @@ type subnetsByCidr []Subnet
 func (subnets subnetsByCidr) Len() int           { return len(subnets) }
 func (subnets subnetsByCidr) Less(i, j int) bool { return subnets[i].cidr < subnets[j].cidr }
 func (subnets subnetsByCidr) Swap(i, j int)      { subnets[i], subnets[j] = subnets[j], subnets[i] }
-
-type Image struct {
-	name        string
-	id          string
-	cDate       common.SDKTime
-	freeTags    map[string]string
-	definedTags map[string]map[string]interface{}
-	launchMode  core.ImageLaunchModeEnum
-}
 
 func checkError(err error) {
 	if err != nil {
@@ -148,6 +146,14 @@ func initializeOciClients() (identity.IdentityClient, bastion.BastionClient, cor
 	return identityClient, bastionClient, computeClient, vnetClient, containerEngineClient
 }
 
+func getSubcommand(firstArg string) string {
+	if strings.HasPrefix(firstArg, "-") {
+		return ""
+	} else {
+		return firstArg
+	}
+}
+
 func getTenancyId(tenancyIdFlag string, client identity.IdentityClient) string {
 	tenancyId, exists := os.LookupEnv("OCI_CLI_TENANCY")
 	if !exists {
@@ -170,6 +176,33 @@ func getTenancyId(tenancyIdFlag string, client identity.IdentityClient) string {
 	}
 
 	return tenancyId
+}
+
+func getCompartmentName(flagCompartmentName string) string {
+	var compartmentName string
+	compartmentIdEnv, exists := os.LookupEnv("OCI_COMPARTMENT_NAME")
+	if exists {
+		compartmentName = compartmentIdEnv
+		if logLevel == "DEBUG" {
+			fmt.Println("Compartment name is set via OCI_COMPARTMENT_NAME to: " + compartmentName)
+		}
+	} else if flagCompartmentName == "" {
+		fmt.Println("Must pass compartment name with -c or set with environment variable OCI_COMPARTMENT_NAME")
+		os.Exit(1)
+	} else {
+		compartmentName = flagCompartmentName
+	}
+
+	return compartmentName
+}
+
+func getCompartmentId(compartmentInfo map[string]string, compartmentName string) string {
+	compartmentId := compartmentInfo[compartmentName]
+	if logLevel == "DEBUG" {
+		fmt.Println("\n" + compartmentName + "'s compartment ID is " + compartmentId)
+	}
+
+	return compartmentId
 }
 
 func getCompartmentInfo(tenancyId string, client identity.IdentityClient) map[string]string {
@@ -303,6 +336,233 @@ func getInstances(computeClient core.ComputeClient, compartmentId string, vnetCl
 	return instancesWithIP
 }
 
+func searchInstances(pattern string, instances []Instance) []Instance {
+	var matches []Instance
+
+	// Handle simple wildcard
+	if pattern == "*" {
+		pattern = ".*"
+	}
+
+	for _, instance := range instances {
+		match, _ := regexp.MatchString(pattern, instance.name)
+		if match {
+			// matches[instanceName] = instanceId
+			matches = append(matches, instance)
+		}
+	}
+
+	if logLevel == "DEBUG" {
+		fmt.Println("\nMatches")
+		for _, instance := range matches {
+			fmt.Println(instance)
+		}
+	}
+
+	return matches
+}
+
+func findInstances(computeClient core.ComputeClient, compartmentId string, flagSearchString string, vnetClient core.VirtualNetworkClient, containerEngineClient containerengine.ContainerEngineClient) {
+	pattern := flagSearchString
+
+	clusters := getClusters(containerEngineClient, compartmentId)
+	clusterMatches := searchClusters(pattern, clusters)
+
+	if len(clusterMatches) > 0 {
+		yellow.Println("OKE Clusters")
+		for _, cluster := range clusterMatches {
+			fmt.Print("Name: ")
+			blue.Println(cluster.name)
+			fmt.Println("Cluster ID: " + cluster.id)
+			fmt.Println("Private endpoint: " + cluster.privateEndpointIp + ":" + cluster.privateEndpointPort)
+			fmt.Println("")
+		}
+	}
+
+	// Get relevant info for ALL instances
+	// We have to do this because GetInstance/ListInstancesRequest does not allow filtering in the request
+	instances := getInstances(computeClient, compartmentId, vnetClient)
+	// returns []Instance
+
+	// Search all instances and return instances that match by name
+	instanceMatches := searchInstances(pattern, instances)
+	// returns []Instance
+
+	// Get ALL VNIC attachments
+	// Once again, doing this because there is no filtering in the request
+	attachments := getVnicAttachments(computeClient, compartmentId)
+	// returns map of instanceId: vnicId
+
+	// vNicIdsToIps := getPrivateIps(vnetClient, compartmentId) // This is inefficient when instance search results are small, resort to getPrivateIp
+	// returns map of vnicId:privateIp
+
+	var instancesWithIP []Instance
+
+	for _, instance := range instanceMatches {
+		vnicId, ok := attachments[instance.id]
+		if ok {
+			if logLevel == "DEBUG" {
+				fmt.Println("VNic ID: " + vnicId)
+			}
+
+			// privateIp := vNicIdsToIps[vnicId]
+			privateIp := getPrivateIp(vnetClient, vnicId)
+
+			instance.ip = privateIp
+			instancesWithIP = append(instancesWithIP, instance) // TODO: Im sure theres a better way to do this using a single slice
+
+		} else {
+			fmt.Println("Unable to lookup VNIC for " + instance.id)
+		}
+	}
+
+	if len(instancesWithIP) > 0 {
+		sort.Sort(instancesByName(instancesWithIP))
+
+		if len(clusterMatches) > 0 {
+			yellowBold.Println("Instances")
+		}
+
+		for _, instance := range instancesWithIP {
+			region := instance.region
+			ad := instance.ad
+			strToRemove := "bKwM:" + region + "-" // TODO: This pattern needs to be updated. bKwM is not the universal prefix
+			ad_short := strings.Replace(ad, strToRemove, "", -1)
+
+			fd := instance.fd
+			fd_short := strings.Replace(fd, "FAULT-DOMAIN", "FD", -1)
+
+			fmt.Print("Name: ")
+			blue.Println(instance.name)
+
+			fmt.Print("ID: ")
+			yellow.Println(instance.id)
+
+			fmt.Print("Private IP: ")
+			yellow.Print(instance.ip)
+
+			fmt.Print(" FD: ")
+			yellow.Print(fd_short)
+
+			fmt.Print(" AD: ")
+			yellow.Println(ad_short)
+
+			fmt.Print("Shape: ")
+			yellow.Print(instance.shape)
+
+			fmt.Print(" Mem: ")
+			yellow.Print(instance.mem)
+
+			fmt.Print(" vCPUs: ")
+			yellow.Println(instance.vCPUs)
+
+			fmt.Print("State: ")
+			yellow.Println(instance.state)
+
+			fmt.Print("Created: ")
+			yellow.Println(instance.cDate)
+
+			image := getImage(computeClient, instance.imageId)
+
+			fmt.Print("Image Name: ")
+			yellow.Println(image.name)
+
+			fmt.Print("Image ID: ")
+			yellow.Println(instance.imageId)
+
+			fmt.Println("Free form image Tags: ")
+
+			for name, value := range image.freeTags {
+				faint.Print(name + ": " + value + " | ")
+			}
+
+			fmt.Println("")
+
+			fmt.Println("Defined image Tags: ")
+			for tagNs, tags := range image.definedTags {
+				// if tagNs != "ohai_required" {
+				for key, value := range tags {
+					faint.Print(tagNs + "." + key + ": " + value.(string) + " | ")
+				}
+				// }
+			}
+
+			fmt.Println("")
+			fmt.Println("")
+		}
+	}
+
+	os.Exit(0)
+}
+
+func listInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) {
+	instances := getInstances(computeClient, compartmentId, vnetClient)
+	// returns []Instance
+
+	for _, instance := range instances {
+		region := instance.region
+		ad := instance.ad
+		strToRemove := "bKwM:" + region + "-"
+		ad_short := strings.Replace(ad, strToRemove, "", -1)
+
+		fd := instance.fd
+		fd_short := strings.Replace(fd, "FAULT-DOMAIN", "FD", -1)
+
+		fmt.Print("Name: ")
+		blue.Println(instance.name)
+
+		fmt.Print("ID: ")
+		yellow.Println(instance.id)
+
+		fmt.Print("Private IP: ")
+		yellow.Print(instance.ip)
+
+		fmt.Print(" FD: ")
+		yellow.Print(fd_short)
+
+		fmt.Print(" AD: ")
+		yellow.Println(ad_short)
+
+		fmt.Print("Shape: ")
+		yellow.Print(instance.shape)
+
+		fmt.Print(" Mem: ")
+		yellow.Print(instance.mem)
+
+		fmt.Print(" vCPUs: ")
+		yellow.Println(instance.vCPUs)
+
+		fmt.Print("State: ")
+		yellow.Println(instance.state)
+
+		fmt.Print("Created: ")
+		yellow.Println(instance.cDate)
+
+		fmt.Print("Image ID: ")
+		yellow.Println(instance.imageId)
+
+		fmt.Println("")
+	}
+}
+
+func getImage(computeClient core.ComputeClient, imageId string) Image {
+	var image Image
+
+	response, err := computeClient.GetImage(context.Background(), core.GetImageRequest{ImageId: &imageId})
+	checkError(err)
+
+	image = Image{
+		*response.DisplayName,
+		*response.Id,
+		*response.TimeCreated,
+		response.FreeformTags, // TODO: sort tags
+		response.DefinedTags,  // TODO: sort tags
+		response.LaunchMode,
+	}
+
+	return image
+}
+
 func getImages(computeClient core.ComputeClient, compartmentId string) []Image {
 	var images []Image
 	var pageCount int
@@ -366,24 +626,6 @@ func getImages(computeClient core.ComputeClient, compartmentId string) []Image {
 
 	fmt.Println(strconv.Itoa(pageCount) + "pages")
 	return images
-}
-
-func getImage(computeClient core.ComputeClient, imageId string) Image {
-	var image Image
-
-	response, err := computeClient.GetImage(context.Background(), core.GetImageRequest{ImageId: &imageId})
-	checkError(err)
-
-	image = Image{
-		*response.DisplayName,
-		*response.Id,
-		*response.TimeCreated,
-		response.FreeformTags, // TODO: sort tags
-		response.DefinedTags,  // TODO: sort tags
-		response.LaunchMode,
-	}
-
-	return image
 }
 
 func listImages(computeClient core.ComputeClient, compartmentId string) {
@@ -467,32 +709,6 @@ func searchClusters(pattern string, clusters []Cluster) []Cluster {
 	return matches
 }
 
-func searchInstances(pattern string, instances []Instance) []Instance {
-	var matches []Instance
-
-	// Handle simple wildcard
-	if pattern == "*" {
-		pattern = ".*"
-	}
-
-	for _, instance := range instances {
-		match, _ := regexp.MatchString(pattern, instance.name)
-		if match {
-			// matches[instanceName] = instanceId
-			matches = append(matches, instance)
-		}
-	}
-
-	if logLevel == "DEBUG" {
-		fmt.Println("\nMatches")
-		for _, instance := range matches {
-			fmt.Println(instance)
-		}
-	}
-
-	return matches
-}
-
 func getVnicAttachments(client core.ComputeClient, compartmentId string) map[string]string {
 	attachments := make(map[string]string)
 
@@ -524,13 +740,6 @@ func getVnicAttachments(client core.ComputeClient, compartmentId string) map[str
 	return attachments
 }
 
-func getPrivateIp(client core.VirtualNetworkClient, vnicId string) string {
-	response, err := client.GetVnic(context.Background(), core.GetVnicRequest{VnicId: &vnicId})
-	checkError(err)
-
-	return *response.Vnic.PrivateIp
-}
-
 func getSubnetIds(client core.VirtualNetworkClient, compartmentId string) []string {
 	response, err := client.ListSubnets(context.Background(), core.ListSubnetsRequest{CompartmentId: &compartmentId})
 	checkError(err)
@@ -542,6 +751,54 @@ func getSubnetIds(client core.VirtualNetworkClient, compartmentId string) []stri
 	}
 
 	return subnetIds
+}
+
+func listSubnets(client core.VirtualNetworkClient, compartmentId string) {
+	response, err := client.ListSubnets(context.Background(), core.ListSubnetsRequest{CompartmentId: &compartmentId})
+	checkError(err)
+
+	var Subnets []Subnet
+	var subnetAccess string
+	var subnetType string
+
+	for _, s := range response.Items {
+		if *s.ProhibitInternetIngress && *s.ProhibitPublicIpOnVnic {
+			subnetAccess = "private"
+		} else if !*s.ProhibitInternetIngress && !*s.ProhibitPublicIpOnVnic {
+			subnetAccess = "public"
+		} else {
+			subnetAccess = "?"
+		}
+
+		if s.AvailabilityDomain == nil {
+			subnetType = "Regional"
+		} else {
+			subnetType = *s.AvailabilityDomain
+		}
+
+		subnet := Subnet{*s.CidrBlock, *s.DisplayName, subnetAccess, subnetType}
+		Subnets = append(Subnets, subnet)
+	}
+
+	if len(Subnets) > 0 {
+		sort.Sort(subnetsByCidr(Subnets))
+	}
+
+	tbl := table.New("CIDR", "Name", "Access", "Type")
+	tbl.WithHeaderFormatter(headerFmt).WithFirstColumnFormatter(columnFmt)
+
+	for _, subnet := range Subnets {
+		tbl.AddRow(subnet.cidr, subnet.name, subnet.access, subnet.subnetType)
+	}
+
+	tbl.Print()
+}
+
+func getPrivateIp(client core.VirtualNetworkClient, vnicId string) string {
+	response, err := client.GetVnic(context.Background(), core.GetVnicRequest{VnicId: &vnicId})
+	checkError(err)
+
+	return *response.Vnic.PrivateIp
 }
 
 func getPrivateIps(client core.VirtualNetworkClient, compartmentId string) map[string]string {
@@ -560,24 +817,6 @@ func getPrivateIps(client core.VirtualNetworkClient, compartmentId string) map[s
 	return vNicIdsToIps
 }
 
-func getCompartmentName(flagCompartmentName string) string {
-	var compartmentName string
-	compartmentIdEnv, exists := os.LookupEnv("OCI_COMPARTMENT_NAME")
-	if exists {
-		compartmentName = compartmentIdEnv
-		if logLevel == "DEBUG" {
-			fmt.Println("Compartment name is set via OCI_COMPARTMENT_NAME to: " + compartmentName)
-		}
-	} else if flagCompartmentName == "" {
-		fmt.Println("Must pass compartment name with -c or set with environment variable OCI_COMPARTMENT_NAME")
-		os.Exit(1)
-	} else {
-		compartmentName = flagCompartmentName
-	}
-
-	return compartmentName
-}
-
 func getBastionName(flagBastionName string) string {
 	var bastionName string
 	bastionNameEnv, exists := os.LookupEnv("OCI_BASTION_NAME")
@@ -594,15 +833,6 @@ func getBastionName(flagBastionName string) string {
 	}
 
 	return bastionName
-}
-
-func getCompartmentId(compartmentInfo map[string]string, compartmentName string) string {
-	compartmentId := compartmentInfo[compartmentName]
-	if logLevel == "DEBUG" {
-		fmt.Println("\n" + compartmentName + "'s compartment ID is " + compartmentId)
-	}
-
-	return compartmentId
 }
 
 func getBastionInfo(compartmentId string, client bastion.BastionClient) map[string]string {
@@ -843,238 +1073,6 @@ func printPortFwSshCommands(client bastion.BastionClient, sessionId *string, tar
 	} else {
 		fmt.Println("-p " + strconv.Itoa(*sshPort) + " -N -L " + strconv.Itoa(tunnelPort) + ":" + *targetIp + ":" + strconv.Itoa(tunnelPort) + " " + bastionHost)
 	}
-}
-
-func findInstances(computeClient core.ComputeClient, compartmentId string, flagSearchString string, vnetClient core.VirtualNetworkClient, containerEngineClient containerengine.ContainerEngineClient) {
-	pattern := flagSearchString
-
-	clusters := getClusters(containerEngineClient, compartmentId)
-	clusterMatches := searchClusters(pattern, clusters)
-
-	if len(clusterMatches) > 0 {
-		yellow.Println("OKE Clusters")
-		for _, cluster := range clusterMatches {
-			fmt.Print("Name: ")
-			blue.Println(cluster.name)
-			fmt.Println("Cluster ID: " + cluster.id)
-			fmt.Println("Private endpoint: " + cluster.privateEndpointIp + ":" + cluster.privateEndpointPort)
-			fmt.Println("")
-		}
-	}
-
-	// Get relevant info for ALL instances
-	// We have to do this because GetInstance/ListInstancesRequest does not allow filtering in the request
-	instances := getInstances(computeClient, compartmentId, vnetClient)
-	// returns []Instance
-
-	// Search all instances and return instances that match by name
-	instanceMatches := searchInstances(pattern, instances)
-	// returns []Instance
-
-	// Get ALL VNIC attachments
-	// Once again, doing this because there is no filtering in the request
-	attachments := getVnicAttachments(computeClient, compartmentId)
-	// returns map of instanceId: vnicId
-
-	// vNicIdsToIps := getPrivateIps(vnetClient, compartmentId) // This is inefficient when instance search results are small, resort to getPrivateIp
-	// returns map of vnicId:privateIp
-
-	var instancesWithIP []Instance
-
-	for _, instance := range instanceMatches {
-		vnicId, ok := attachments[instance.id]
-		if ok {
-			if logLevel == "DEBUG" {
-				fmt.Println("VNic ID: " + vnicId)
-			}
-
-			// privateIp := vNicIdsToIps[vnicId]
-			privateIp := getPrivateIp(vnetClient, vnicId)
-
-			instance.ip = privateIp
-			instancesWithIP = append(instancesWithIP, instance) // TODO: Im sure theres a better way to do this using a single slice
-
-		} else {
-			fmt.Println("Unable to lookup VNIC for " + instance.id)
-		}
-	}
-
-	if len(instancesWithIP) > 0 {
-		sort.Sort(instancesByName(instancesWithIP))
-
-		if len(clusterMatches) > 0 {
-			yellowBold.Println("Instances")
-		}
-
-		for _, instance := range instancesWithIP {
-			region := instance.region
-			ad := instance.ad
-			strToRemove := "bKwM:" + region + "-" // TODO: This pattern needs to be updated. bKwM is not the universal prefix
-			ad_short := strings.Replace(ad, strToRemove, "", -1)
-
-			fd := instance.fd
-			fd_short := strings.Replace(fd, "FAULT-DOMAIN", "FD", -1)
-
-			fmt.Print("Name: ")
-			blue.Println(instance.name)
-
-			fmt.Print("ID: ")
-			yellow.Println(instance.id)
-
-			fmt.Print("Private IP: ")
-			yellow.Print(instance.ip)
-
-			fmt.Print(" FD: ")
-			yellow.Print(fd_short)
-
-			fmt.Print(" AD: ")
-			yellow.Println(ad_short)
-
-			fmt.Print("Shape: ")
-			yellow.Print(instance.shape)
-
-			fmt.Print(" Mem: ")
-			yellow.Print(instance.mem)
-
-			fmt.Print(" vCPUs: ")
-			yellow.Println(instance.vCPUs)
-
-			fmt.Print("State: ")
-			yellow.Println(instance.state)
-
-			fmt.Print("Created: ")
-			yellow.Println(instance.cDate)
-
-			image := getImage(computeClient, instance.imageId)
-
-			fmt.Print("Image Name: ")
-			yellow.Println(image.name)
-
-			fmt.Print("Image ID: ")
-			yellow.Println(instance.imageId)
-
-			fmt.Println("Free form image Tags: ")
-
-			for name, value := range image.freeTags {
-				faint.Print(name + ": " + value + " | ")
-			}
-
-			fmt.Println("")
-
-			fmt.Println("Defined image Tags: ")
-			for tagNs, tags := range image.definedTags {
-				// if tagNs != "ohai_required" {
-				for key, value := range tags {
-					faint.Print(tagNs + "." + key + ": " + value.(string) + " | ")
-				}
-				// }
-			}
-
-			fmt.Println("")
-			fmt.Println("")
-		}
-	}
-
-	os.Exit(0)
-}
-
-func listInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) {
-	instances := getInstances(computeClient, compartmentId, vnetClient)
-	// returns []Instance
-
-	for _, instance := range instances {
-		region := instance.region
-		ad := instance.ad
-		strToRemove := "bKwM:" + region + "-"
-		ad_short := strings.Replace(ad, strToRemove, "", -1)
-
-		fd := instance.fd
-		fd_short := strings.Replace(fd, "FAULT-DOMAIN", "FD", -1)
-
-		fmt.Print("Name: ")
-		blue.Println(instance.name)
-
-		fmt.Print("ID: ")
-		yellow.Println(instance.id)
-
-		fmt.Print("Private IP: ")
-		yellow.Print(instance.ip)
-
-		fmt.Print(" FD: ")
-		yellow.Print(fd_short)
-
-		fmt.Print(" AD: ")
-		yellow.Println(ad_short)
-
-		fmt.Print("Shape: ")
-		yellow.Print(instance.shape)
-
-		fmt.Print(" Mem: ")
-		yellow.Print(instance.mem)
-
-		fmt.Print(" vCPUs: ")
-		yellow.Println(instance.vCPUs)
-
-		fmt.Print("State: ")
-		yellow.Println(instance.state)
-
-		fmt.Print("Created: ")
-		yellow.Println(instance.cDate)
-
-		fmt.Print("Image ID: ")
-		yellow.Println(instance.imageId)
-
-		fmt.Println("")
-	}
-}
-
-func getSubcommand(firstArg string) string {
-	if strings.HasPrefix(firstArg, "-") {
-		return ""
-	} else {
-		return firstArg
-	}
-}
-
-func listSubnets(client core.VirtualNetworkClient, compartmentId string) {
-	response, err := client.ListSubnets(context.Background(), core.ListSubnetsRequest{CompartmentId: &compartmentId})
-	checkError(err)
-
-	var Subnets []Subnet
-	var subnetAccess string
-	var subnetType string
-
-	for _, s := range response.Items {
-		if *s.ProhibitInternetIngress && *s.ProhibitPublicIpOnVnic {
-			subnetAccess = "private"
-		} else if !*s.ProhibitInternetIngress && !*s.ProhibitPublicIpOnVnic {
-			subnetAccess = "public"
-		} else {
-			subnetAccess = "?"
-		}
-
-		if s.AvailabilityDomain == nil {
-			subnetType = "Regional"
-		} else {
-			subnetType = *s.AvailabilityDomain
-		}
-
-		subnet := Subnet{*s.CidrBlock, *s.DisplayName, subnetAccess, subnetType}
-		Subnets = append(Subnets, subnet)
-	}
-
-	if len(Subnets) > 0 {
-		sort.Sort(subnetsByCidr(Subnets))
-	}
-
-	tbl := table.New("CIDR", "Name", "Access", "Type")
-	tbl.WithHeaderFormatter(headerFmt).WithFirstColumnFormatter(columnFmt)
-
-	for _, subnet := range Subnets {
-		tbl.AddRow(subnet.cidr, subnet.name, subnet.access, subnet.subnetType)
-	}
-
-	tbl.Print()
 }
 
 func main() {
@@ -1352,4 +1350,4 @@ func main() {
 	}
 }
 
-// TODO: Currently all networking function include all VCNs without indicating which VNC and object belongs to. Need to handle VNC ID flag and denoting VNC when flag not passed
+// TODO: Currently all networking function include all VCNs without indicating which VNC an object belongs to. Need to support VNC ID flag and print VNC when flag not passed
