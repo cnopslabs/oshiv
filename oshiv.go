@@ -21,10 +21,10 @@ import (
 	"github.com/rodaine/table"
 )
 
-const logLevel = "INFO"   // TODO: switch to logging library
+const logLevel = "INFO" // TODO: switch to logging library
+
 var version = "undefined" // Version gets automatically updated during build
 
-// var blueBold = color.New(color.FgCyan, color.Bold)
 var blue = color.New(color.FgCyan)
 var yellowBold = color.New(color.FgYellow, color.Bold)
 var yellow = color.New(color.FgYellow)
@@ -100,14 +100,14 @@ func checkError(err error) {
 	}
 }
 
-func getHomeDir() string {
+func homeDir() string {
 	homeDir, err := os.UserHomeDir()
 	checkError(err)
 
 	return homeDir
 }
 
-func initializeOciClients() (identity.IdentityClient, bastion.BastionClient, core.ComputeClient, core.VirtualNetworkClient, containerengine.ContainerEngineClient) {
+func configureProvider() common.ConfigurationProvider {
 	var config common.ConfigurationProvider
 
 	profile, exists := os.LookupEnv("OCI_CLI_PROFILE")
@@ -117,8 +117,7 @@ func initializeOciClients() (identity.IdentityClient, bastion.BastionClient, cor
 			fmt.Println("Using profile " + profile)
 		}
 
-		homeDir := getHomeDir()
-		configPath := homeDir + "/.oci/config"
+		configPath := homeDir() + "/.oci/config"
 
 		config = common.CustomProfileConfigProvider(configPath, profile)
 	} else {
@@ -128,25 +127,10 @@ func initializeOciClients() (identity.IdentityClient, bastion.BastionClient, cor
 		config = common.DefaultConfigProvider()
 	}
 
-	identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(config)
-	checkError(identityErr)
-
-	computeClient, err := core.NewComputeClientWithConfigurationProvider(config)
-	checkError(err)
-
-	vnetClient, err := core.NewVirtualNetworkClientWithConfigurationProvider(config)
-	checkError(err)
-
-	bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(config)
-	checkError(err)
-
-	containerEngineClient, err := containerengine.NewContainerEngineClientWithConfigurationProvider(config)
-	checkError(err)
-
-	return identityClient, bastionClient, computeClient, vnetClient, containerEngineClient
+	return config
 }
 
-func getSubcommand(firstArg string) string {
+func parseSubcommand(firstArg string) string {
 	if strings.HasPrefix(firstArg, "-") {
 		return ""
 	} else {
@@ -154,7 +138,7 @@ func getSubcommand(firstArg string) string {
 	}
 }
 
-func getTenancyId(tenancyIdFlag string, client identity.IdentityClient) string {
+func validateTenancyId(tenancyIdFlag string, client identity.IdentityClient) string {
 	tenancyId, exists := os.LookupEnv("OCI_CLI_TENANCY")
 	if !exists {
 		if tenancyIdFlag == "" {
@@ -178,7 +162,7 @@ func getTenancyId(tenancyIdFlag string, client identity.IdentityClient) string {
 	return tenancyId
 }
 
-func getCompartmentName(flagCompartmentName string) string {
+func checkCompartmentName(flagCompartmentName string) string {
 	var compartmentName string
 	compartmentIdEnv, exists := os.LookupEnv("OCI_COMPARTMENT_NAME")
 	if exists {
@@ -196,16 +180,7 @@ func getCompartmentName(flagCompartmentName string) string {
 	return compartmentName
 }
 
-func getCompartmentId(compartmentInfo map[string]string, compartmentName string) string {
-	compartmentId := compartmentInfo[compartmentName]
-	if logLevel == "DEBUG" {
-		fmt.Println("\n" + compartmentName + "'s compartment ID is " + compartmentId)
-	}
-
-	return compartmentId
-}
-
-func getCompartmentInfo(tenancyId string, client identity.IdentityClient) map[string]string {
+func fetchCompartmentInfo(tenancyId string, client identity.IdentityClient) map[string]string {
 	response, err := client.ListCompartments(context.Background(), identity.ListCompartmentsRequest{CompartmentId: &tenancyId})
 	checkError(err)
 
@@ -216,6 +191,15 @@ func getCompartmentInfo(tenancyId string, client identity.IdentityClient) map[st
 	}
 
 	return compartmentInfo
+}
+
+func lookupCompartmentId(compartmentInfo map[string]string, compartmentName string) string {
+	compartmentId := compartmentInfo[compartmentName]
+	if logLevel == "DEBUG" {
+		fmt.Println("\n" + compartmentName + "'s compartment ID is " + compartmentId)
+	}
+
+	return compartmentId
 }
 
 func listCompartmentNames(compartmentInfo map[string]string) {
@@ -238,7 +222,7 @@ func listCompartmentNames(compartmentInfo map[string]string) {
 	yellow.Println("   export OCI_COMPARTMENT_NAME=")
 }
 
-func getInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) []Instance {
+func fetchInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) []Instance {
 	var instances []Instance
 
 	initialResponse, err := computeClient.ListInstances(context.Background(), core.ListInstancesRequest{
@@ -301,10 +285,10 @@ func getInstances(computeClient core.ComputeClient, compartmentId string, vnetCl
 		}
 	}
 
-	attachments := getVnicAttachments(computeClient, compartmentId)
+	attachments := fetchVnicAttachments(computeClient, compartmentId)
 	// returns map of instanceId:vnicId
 
-	vNicIdsToIps := getPrivateIps(vnetClient, compartmentId)
+	vNicIdsToIps := fetchPrivateIps(vnetClient, compartmentId)
 	// returns map of vnicId:privateIp
 
 	var instancesWithIP []Instance
@@ -336,6 +320,7 @@ func getInstances(computeClient core.ComputeClient, compartmentId string, vnetCl
 	return instancesWithIP
 }
 
+// TODO: Combine with findInstances
 func searchInstances(pattern string, instances []Instance) []Instance {
 	var matches []Instance
 
@@ -347,7 +332,6 @@ func searchInstances(pattern string, instances []Instance) []Instance {
 	for _, instance := range instances {
 		match, _ := regexp.MatchString(pattern, instance.name)
 		if match {
-			// matches[instanceName] = instanceId
 			matches = append(matches, instance)
 		}
 	}
@@ -362,26 +346,13 @@ func searchInstances(pattern string, instances []Instance) []Instance {
 	return matches
 }
 
-func findInstances(computeClient core.ComputeClient, compartmentId string, flagSearchString string, vnetClient core.VirtualNetworkClient, containerEngineClient containerengine.ContainerEngineClient) {
+// TODO: break into two functions (instances + compute)
+func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetworkClient, compartmentId string, flagSearchString string) {
 	pattern := flagSearchString
-
-	clusters := getClusters(containerEngineClient, compartmentId)
-	clusterMatches := searchClusters(pattern, clusters)
-
-	if len(clusterMatches) > 0 {
-		yellow.Println("OKE Clusters")
-		for _, cluster := range clusterMatches {
-			fmt.Print("Name: ")
-			blue.Println(cluster.name)
-			fmt.Println("Cluster ID: " + cluster.id)
-			fmt.Println("Private endpoint: " + cluster.privateEndpointIp + ":" + cluster.privateEndpointPort)
-			fmt.Println("")
-		}
-	}
 
 	// Get relevant info for ALL instances
 	// We have to do this because GetInstance/ListInstancesRequest does not allow filtering in the request
-	instances := getInstances(computeClient, compartmentId, vnetClient)
+	instances := fetchInstances(computeClient, compartmentId, vnetClient)
 	// returns []Instance
 
 	// Search all instances and return instances that match by name
@@ -390,10 +361,10 @@ func findInstances(computeClient core.ComputeClient, compartmentId string, flagS
 
 	// Get ALL VNIC attachments
 	// Once again, doing this because there is no filtering in the request
-	attachments := getVnicAttachments(computeClient, compartmentId)
+	attachments := fetchVnicAttachments(computeClient, compartmentId)
 	// returns map of instanceId: vnicId
 
-	// vNicIdsToIps := getPrivateIps(vnetClient, compartmentId) // This is inefficient when instance search results are small, resort to getPrivateIp
+	// vNicIdsToIps := fetchPrivateIps(vnetClient, compartmentId) // This is inefficient when instance search results are small, resort to fetchPrivateIp
 	// returns map of vnicId:privateIp
 
 	var instancesWithIP []Instance
@@ -406,7 +377,7 @@ func findInstances(computeClient core.ComputeClient, compartmentId string, flagS
 			}
 
 			// privateIp := vNicIdsToIps[vnicId]
-			privateIp := getPrivateIp(vnetClient, vnicId)
+			privateIp := fetchPrivateIp(vnetClient, vnicId)
 
 			instance.ip = privateIp
 			instancesWithIP = append(instancesWithIP, instance) // TODO: Im sure theres a better way to do this using a single slice
@@ -418,10 +389,6 @@ func findInstances(computeClient core.ComputeClient, compartmentId string, flagS
 
 	if len(instancesWithIP) > 0 {
 		sort.Sort(instancesByName(instancesWithIP))
-
-		if len(clusterMatches) > 0 {
-			yellowBold.Println("Instances")
-		}
 
 		for _, instance := range instancesWithIP {
 			region := instance.region
@@ -462,7 +429,7 @@ func findInstances(computeClient core.ComputeClient, compartmentId string, flagS
 			fmt.Print("Created: ")
 			yellow.Println(instance.cDate)
 
-			image := getImage(computeClient, instance.imageId)
+			image := fetchImage(computeClient, instance.imageId)
 
 			fmt.Print("Image Name: ")
 			yellow.Println(image.name)
@@ -495,8 +462,27 @@ func findInstances(computeClient core.ComputeClient, compartmentId string, flagS
 	os.Exit(0)
 }
 
+func findClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string, flagSearchString string) {
+	pattern := flagSearchString
+	clusters := fetchClusters(containerEngineClient, compartmentId)
+	clusterMatches := searchClusters(pattern, clusters)
+
+	if len(clusterMatches) > 0 {
+		yellow.Println("OKE Clusters")
+		for _, cluster := range clusterMatches {
+			fmt.Print("Name: ")
+			blue.Println(cluster.name)
+			fmt.Println("Cluster ID: " + cluster.id)
+			fmt.Println("Private endpoint: " + cluster.privateEndpointIp + ":" + cluster.privateEndpointPort)
+			fmt.Println("")
+		}
+	}
+
+	os.Exit(0)
+}
+
 func listInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) {
-	instances := getInstances(computeClient, compartmentId, vnetClient)
+	instances := fetchInstances(computeClient, compartmentId, vnetClient)
 	// returns []Instance
 
 	for _, instance := range instances {
@@ -545,7 +531,7 @@ func listInstances(computeClient core.ComputeClient, compartmentId string, vnetC
 	}
 }
 
-func getImage(computeClient core.ComputeClient, imageId string) Image {
+func fetchImage(computeClient core.ComputeClient, imageId string) Image {
 	var image Image
 
 	response, err := computeClient.GetImage(context.Background(), core.GetImageRequest{ImageId: &imageId})
@@ -563,7 +549,7 @@ func getImage(computeClient core.ComputeClient, imageId string) Image {
 	return image
 }
 
-func getImages(computeClient core.ComputeClient, compartmentId string) []Image {
+func fetchImages(computeClient core.ComputeClient, compartmentId string) []Image {
 	var images []Image
 	var pageCount int
 	pageCount = 0
@@ -629,7 +615,7 @@ func getImages(computeClient core.ComputeClient, compartmentId string) []Image {
 }
 
 func listImages(computeClient core.ComputeClient, compartmentId string) {
-	images := getImages(computeClient, compartmentId)
+	images := fetchImages(computeClient, compartmentId)
 
 	for _, image := range images {
 		fmt.Print("Name: ")
@@ -656,7 +642,7 @@ func listImages(computeClient core.ComputeClient, compartmentId string) {
 	fmt.Println(strconv.Itoa(len(images)) + " images found")
 }
 
-func getClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string) []Cluster {
+func fetchClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string) []Cluster {
 	var Clusters []Cluster
 
 	initialResponse, err := containerEngineClient.ListClusters(context.Background(), containerengine.ListClustersRequest{
@@ -709,7 +695,7 @@ func searchClusters(pattern string, clusters []Cluster) []Cluster {
 	return matches
 }
 
-func getVnicAttachments(client core.ComputeClient, compartmentId string) map[string]string {
+func fetchVnicAttachments(client core.ComputeClient, compartmentId string) map[string]string {
 	attachments := make(map[string]string)
 
 	initialResponse, err := client.ListVnicAttachments(context.Background(), core.ListVnicAttachmentsRequest{CompartmentId: &compartmentId})
@@ -740,7 +726,7 @@ func getVnicAttachments(client core.ComputeClient, compartmentId string) map[str
 	return attachments
 }
 
-func getSubnetIds(client core.VirtualNetworkClient, compartmentId string) []string {
+func fetchSubnetIds(client core.VirtualNetworkClient, compartmentId string) []string {
 	response, err := client.ListSubnets(context.Background(), core.ListSubnetsRequest{CompartmentId: &compartmentId})
 	checkError(err)
 
@@ -794,16 +780,16 @@ func listSubnets(client core.VirtualNetworkClient, compartmentId string) {
 	tbl.Print()
 }
 
-func getPrivateIp(client core.VirtualNetworkClient, vnicId string) string {
+func fetchPrivateIp(client core.VirtualNetworkClient, vnicId string) string {
 	response, err := client.GetVnic(context.Background(), core.GetVnicRequest{VnicId: &vnicId})
 	checkError(err)
 
 	return *response.Vnic.PrivateIp
 }
 
-func getPrivateIps(client core.VirtualNetworkClient, compartmentId string) map[string]string {
+func fetchPrivateIps(client core.VirtualNetworkClient, compartmentId string) map[string]string {
 	vNicIdsToIps := make(map[string]string)
-	subnetIds := getSubnetIds(client, compartmentId)
+	subnetIds := fetchSubnetIds(client, compartmentId)
 
 	for _, subnetId := range subnetIds {
 		response, err := client.ListPrivateIps(context.Background(), core.ListPrivateIpsRequest{SubnetId: &subnetId})
@@ -817,7 +803,7 @@ func getPrivateIps(client core.VirtualNetworkClient, compartmentId string) map[s
 	return vNicIdsToIps
 }
 
-func getBastionName(flagBastionName string) string {
+func checkBastionName(flagBastionName string) string {
 	var bastionName string
 	bastionNameEnv, exists := os.LookupEnv("OCI_BASTION_NAME")
 	if exists {
@@ -835,7 +821,7 @@ func getBastionName(flagBastionName string) string {
 	return bastionName
 }
 
-func getBastionInfo(compartmentId string, client bastion.BastionClient) map[string]string {
+func fetchBastions(compartmentId string, client bastion.BastionClient) map[string]string {
 	response, err := client.ListBastions(context.Background(), bastion.ListBastionsRequest{CompartmentId: &compartmentId})
 	checkError(err)
 
@@ -846,6 +832,15 @@ func getBastionInfo(compartmentId string, client bastion.BastionClient) map[stri
 	}
 
 	return bastionInfo
+}
+
+func fetchBastion(bastionName string, bastionId string, client bastion.BastionClient) {
+	if logLevel == "DEBUG" {
+		fmt.Println("\nGetting bastion for: " + bastionName + " (" + bastionId + ")")
+	}
+
+	_, err := client.GetBastion(context.Background(), bastion.GetBastionRequest{BastionId: &bastionId})
+	checkError(err)
 }
 
 func listBastions(bastionInfo map[string]string) {
@@ -864,20 +859,9 @@ func listBastions(bastionInfo map[string]string) {
 	yellow.Println("   export OCI_BASTION_NAME=")
 }
 
-func getBastion(bastionName string, bastionId string, client bastion.BastionClient) {
-	if logLevel == "DEBUG" {
-		fmt.Println("\nGetting bastion for: " + bastionName + " (" + bastionId + ")")
-	}
-
-	_, err := client.GetBastion(context.Background(), bastion.GetBastionRequest{BastionId: &bastionId})
-	checkError(err)
-}
-
-func getSshPubKeyContents(sshPrivateKeyFileLocation string) string {
-	homeDir := getHomeDir()
-
+func readSshPubKey(sshPrivateKeyFileLocation string) string {
 	if sshPrivateKeyFileLocation == "" {
-		sshPrivateKeyFileLocation = homeDir + "/.ssh/id_rsa"
+		sshPrivateKeyFileLocation = homeDir() + "/.ssh/id_rsa"
 		fmt.Println("\nUsing default SSH identity file at " + sshPrivateKeyFileLocation)
 	}
 
@@ -1162,7 +1146,7 @@ func main() {
 	flagSubnetsList := subnetsCmd.Bool("l", false, "List all subnets")
 	flagSubnetsFind := subnetsCmd.String("f", "", "Find subnets by search pattern")
 
-	subcommand := getSubcommand(os.Args[1])
+	subcommand := parseSubcommand(os.Args[1])
 
 	// Main program logic starts here
 	// Print version
@@ -1171,13 +1155,17 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Initialize OCI clients
-	identityClient, bastionClient, computeClient, vnetClient, containerEngineClient := initializeOciClients()
+	// Configure OCI provider by profile
+	ociConfig := configureProvider()
+
+	// identityClient is always required
+	identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
+	checkError(identityErr)
 
 	// Attempt to get tenancy ID from input and validate it against OCI API
-	tenancyId := getTenancyId(*flagTenancyId, identityClient)
+	tenancyId := validateTenancyId(*flagTenancyId, identityClient)
 	// All actions except listing compartments require a compartment ID, compartment info will contain a map of compartment names and IDs
-	compartmentInfo := getCompartmentInfo(tenancyId, identityClient)
+	compartmentInfo := fetchCompartmentInfo(tenancyId, identityClient)
 
 	// List all compartments
 	if *flagListCompartments {
@@ -1187,22 +1175,33 @@ func main() {
 
 	// <-- Anything beyond this point requires a compartment -->
 	// Attempt to get compartment name from input then lookup compartment ID
-	compartmentName := getCompartmentName(*flagCompartmentName)
-	compartmentId := getCompartmentId(compartmentInfo, compartmentName)
+	compartmentName := checkCompartmentName(*flagCompartmentName)
+	compartmentId := lookupCompartmentId(compartmentInfo, compartmentName)
 
 	// Subcommands
 	switch subcommand {
 	case "compute":
 		computeCmd.Parse(os.Args[2:])
+
+		computeClient, err := core.NewComputeClientWithConfigurationProvider(ociConfig)
+		checkError(err)
+
+		vnetClient, err := core.NewVirtualNetworkClientWithConfigurationProvider(ociConfig)
+		checkError(err)
+
 		if *flagComputeList {
 			listInstances(computeClient, compartmentId, vnetClient)
 		} else if *flagComputeFind != "" {
-			findInstances(computeClient, compartmentId, *flagComputeFind, vnetClient, containerEngineClient)
+			findInstances(computeClient, vnetClient, compartmentId, *flagSearchString)
 		}
 		os.Exit(0)
 
 	case "image":
 		imageCmd.Parse(os.Args[2:])
+
+		computeClient, err := core.NewComputeClientWithConfigurationProvider(ociConfig)
+		checkError(err)
+
 		if *flagImageList {
 			listImages(computeClient, compartmentId)
 		} else if *flagImageFind != "" {
@@ -1213,6 +1212,10 @@ func main() {
 
 	case "subnets":
 		subnetsCmd.Parse(os.Args[2:])
+
+		vnetClient, err := core.NewVirtualNetworkClientWithConfigurationProvider(ociConfig)
+		checkError(err)
+
 		if *flagSubnetsList {
 			listSubnets(vnetClient, compartmentId)
 		} else if *flagSubnetsFind != "" {
@@ -1221,14 +1224,29 @@ func main() {
 		}
 		os.Exit(0)
 
-	// If no subcommand is given, we are in bastion connection mode (except for legacy instance search)
+	// If no subcommand is given, we're in legacy mode (instance/cluster search || list bastions || list sessions || create session || check session)
 	case "":
 		if *flagSearchString != "" {
-			findInstances(computeClient, compartmentId, *flagSearchString, vnetClient, containerEngineClient)
+			computeClient, err := core.NewComputeClientWithConfigurationProvider(ociConfig)
+			checkError(err)
+
+			vnetClient, err := core.NewVirtualNetworkClientWithConfigurationProvider(ociConfig)
+			checkError(err)
+
+			// Default searches for both instances and clusters
+			findInstances(computeClient, vnetClient, compartmentId, *flagSearchString)
+
+			containerEngineClient, err := containerengine.NewContainerEngineClientWithConfigurationProvider(ociConfig)
+			checkError(err)
+
+			findClusters(containerEngineClient, compartmentId, *flagSearchString)
 		}
 
+		bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(ociConfig)
+		checkError(err)
+
 		// <-- Anything beyond this point requires bastion information -->
-		bastionInfo := getBastionInfo(compartmentId, bastionClient)
+		bastionInfo := fetchBastions(compartmentId, bastionClient)
 
 		if *flagListBastions {
 			listBastions(bastionInfo)
@@ -1253,23 +1271,21 @@ func main() {
 
 		} else {
 			// There were multiple bastions found so we'll need to know which one to use
-			bastionName = getBastionName(*flagBastionName)
+			bastionName = checkBastionName(*flagBastionName)
 			bastionId = bastionInfo[bastionName]
 		}
 
-		getBastion(bastionName, bastionId, bastionClient)
+		fetchBastion(bastionName, bastionId, bastionClient)
 
 		if *flagListSessions {
 			listActiveSessions(bastionClient, bastionId)
 			os.Exit(0)
 		}
 
-		homeDir := getHomeDir()
-
 		var sshPrivateKeyFileLocation string
 		if *flagSshPrivateKey == "" {
 			// TODO: move this default to flags
-			sshPrivateKeyFileLocation = homeDir + "/.ssh/id_rsa"
+			sshPrivateKeyFileLocation = homeDir() + "/.ssh/id_rsa"
 			if logLevel == "DEBUG" {
 				fmt.Println("Using default SSH private key file at " + sshPrivateKeyFileLocation)
 			}
@@ -1280,7 +1296,7 @@ func main() {
 		var sshPublicKeyFileLocation string
 		if *flagSshPublicKey == "" {
 			// TODO: move this default to flags
-			sshPublicKeyFileLocation = homeDir + "/.ssh/id_rsa.pub"
+			sshPublicKeyFileLocation = homeDir() + "/.ssh/id_rsa.pub"
 			if logLevel == "DEBUG" {
 				fmt.Println("\nUsing default SSH public key file at " + sshPublicKeyFileLocation)
 			}
@@ -1288,7 +1304,7 @@ func main() {
 			sshPublicKeyFileLocation = *flagSshPublicKey
 		}
 
-		publicKeyContent := getSshPubKeyContents(sshPublicKeyFileLocation)
+		publicKeyContent := readSshPubKey(sshPublicKeyFileLocation)
 
 		var sshTunnelPort int
 		if *flagOkeClusterId != "" {
