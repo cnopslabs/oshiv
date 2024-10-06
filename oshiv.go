@@ -222,7 +222,40 @@ func listCompartmentNames(compartmentInfo map[string]string) {
 	yellow.Println("   export OCI_COMPARTMENT_NAME=")
 }
 
-func fetchInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) []Instance {
+func fetchVnicAttachments(client core.ComputeClient, compartmentId string) map[string]string {
+	attachments := make(map[string]string)
+
+	initialResponse, err := client.ListVnicAttachments(context.Background(), core.ListVnicAttachmentsRequest{CompartmentId: &compartmentId})
+	checkError(err)
+
+	for _, attachment := range initialResponse.Items {
+		attachments[*attachment.InstanceId] = *attachment.VnicId
+	}
+
+	if initialResponse.OpcNextPage != nil {
+		nextPage := initialResponse.OpcNextPage
+		for {
+			response, err := client.ListVnicAttachments(context.Background(), core.ListVnicAttachmentsRequest{CompartmentId: &compartmentId, Page: nextPage})
+			checkError(err)
+
+			for _, attachment := range response.Items {
+				attachments[*attachment.InstanceId] = *attachment.VnicId
+			}
+
+			if response.OpcNextPage != nil {
+				nextPage = response.OpcNextPage
+			} else {
+				break
+			}
+		}
+	}
+
+	return attachments
+}
+
+func fetchInstances(computeClient core.ComputeClient, compartmentId string) []Instance {
+	start_fetchInstances := time.Now() // TODO: REMOVE
+
 	var instances []Instance
 
 	initialResponse, err := computeClient.ListInstances(context.Background(), core.ListInstancesRequest{
@@ -235,7 +268,7 @@ func fetchInstances(computeClient core.ComputeClient, compartmentId string, vnet
 		instance := Instance{
 			*instance.DisplayName,
 			*instance.Id,
-			"0",
+			"0", // We have to lookup the private IP address separately
 			*instance.AvailabilityDomain,
 			*instance.Shape,
 			*instance.TimeCreated,
@@ -285,30 +318,6 @@ func fetchInstances(computeClient core.ComputeClient, compartmentId string, vnet
 		}
 	}
 
-	attachments := fetchVnicAttachments(computeClient, compartmentId)
-	// returns map of instanceId:vnicId
-
-	vNicIdsToIps := fetchPrivateIps(vnetClient, compartmentId)
-	// returns map of vnicId:privateIp
-
-	var instancesWithIP []Instance
-
-	for _, instance := range instances {
-		vnicId, ok := attachments[instance.id]
-		if ok {
-			if logLevel == "DEBUG" {
-				fmt.Println("VNic ID: " + vnicId)
-			}
-
-			privateIp := vNicIdsToIps[vnicId]
-			instance.ip = privateIp
-			instancesWithIP = append(instancesWithIP, instance) // TODO: Im sure theres a better way to do this using a single slice
-
-		} else {
-			fmt.Println("Unable to lookup VNIC for " + instance.id)
-		}
-	}
-
 	if logLevel == "DEBUG" {
 		fmt.Println("")
 		for _, name := range instances {
@@ -317,7 +326,11 @@ func fetchInstances(computeClient core.ComputeClient, compartmentId string, vnet
 		fmt.Println("")
 	}
 
-	return instancesWithIP
+	duration := time.Since(start_fetchInstances) // TODO: remove timer
+	fmt.Print("Execution time of fetchInstances function: ")
+	fmt.Println(duration)
+
+	return instances
 }
 
 // TODO: Combine with findInstances
@@ -346,28 +359,66 @@ func searchInstances(pattern string, instances []Instance) []Instance {
 	return matches
 }
 
-// TODO: break into two functions (instances + compute)
-func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetworkClient, compartmentId string, flagSearchString string) {
+func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetworkClient, compartmentId string, flagSearchString string, retrieveImageInfo bool) {
+	start_findInstances := time.Now()
+
 	pattern := flagSearchString
 
 	// Get relevant info for ALL instances
-	// We have to do this because GetInstance/ListInstancesRequest does not allow filtering in the request
-	instances := fetchInstances(computeClient, compartmentId, vnetClient)
+	// We have to do this because GetInstanceRequest/ListInstancesRequests do not allow filtering by pattern
+	instances := fetchInstances(computeClient, compartmentId)
 	// returns []Instance
 
 	// Search all instances and return instances that match by name
+	start_searchInstances := time.Now()
 	instanceMatches := searchInstances(pattern, instances)
-	// returns []Instance
+	fmt.Print(len(instanceMatches))
+	fmt.Println(" matches")
+	duration_searchInstances := time.Since(start_searchInstances) // TODO: remove timer
+	fmt.Print("Execution time of searchInstances function: ")
+	fmt.Println(duration_searchInstances)
+
+	matchCount := len(instanceMatches)
+	var batchFetchAllIps bool
+
+	// When more than ~25 private IPs need to be looked up, its faster to batch them all together
+	if matchCount > 25 {
+		batchFetchAllIps = true
+
+		if logLevel == "DEBUG" {
+			fmt.Print(matchCount)
+			fmt.Println(" matches, Fetching all IPs")
+		}
+	} else {
+		batchFetchAllIps = false
+
+		if logLevel == "INFO" {
+			fmt.Print(matchCount)
+			fmt.Println(" matches, fetching IPs per instances")
+		}
+	}
 
 	// Get ALL VNIC attachments
-	// Once again, doing this because there is no filtering in the request
+	// Once again, doing this because the request does not support filtering in the request
+	start_fetchVnicAttachments := time.Now()
 	attachments := fetchVnicAttachments(computeClient, compartmentId)
+	duration_fetchVnicAttachments := time.Since(start_fetchVnicAttachments) // TODO: remove timer
+	fmt.Print("Execution time of fetchVnicAttachments function: ")
+	fmt.Println(duration_fetchVnicAttachments)
 	// returns map of instanceId: vnicId
 
-	// vNicIdsToIps := fetchPrivateIps(vnetClient, compartmentId) // This is inefficient when instance search results are small, resort to fetchPrivateIp
-	// returns map of vnicId:privateIp
+	vNicIdsToIps := make(map[string]string)
+	if batchFetchAllIps {
+		start_fetchPrivateIps := time.Now()
+		vNicIdsToIps = fetchPrivateIps(vnetClient, compartmentId)     // This is inefficient when instance search results are small, resort to fetchPrivateIp
+		duration_fetchPrivateIps := time.Since(start_fetchPrivateIps) // TODO: remove timer
+		fmt.Print("Execution time of fetchPrivateIps function: ")
+		fmt.Println(duration_fetchPrivateIps)
+		// returns map of vnicId:privateIp
+	}
 
 	var instancesWithIP []Instance
+	var privateIp string
 
 	for _, instance := range instanceMatches {
 		vnicId, ok := attachments[instance.id]
@@ -376,8 +427,11 @@ func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 				fmt.Println("VNic ID: " + vnicId)
 			}
 
-			// privateIp := vNicIdsToIps[vnicId]
-			privateIp := fetchPrivateIp(vnetClient, vnicId)
+			if batchFetchAllIps {
+				privateIp = vNicIdsToIps[vnicId]
+			} else {
+				privateIp = fetchPrivateIp(vnetClient, vnicId)
+			}
 
 			instance.ip = privateIp
 			instancesWithIP = append(instancesWithIP, instance) // TODO: Im sure theres a better way to do this using a single slice
@@ -388,7 +442,14 @@ func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 	}
 
 	if len(instancesWithIP) > 0 {
+		start_instancesByName := time.Now()
 		sort.Sort(instancesByName(instancesWithIP))
+		duration_instancesByName := time.Since(start_instancesByName) // TODO: remove timer
+		fmt.Print("Execution time of instancesByName function: ")
+		fmt.Println(duration_instancesByName)
+
+		var total_fetchImage float64
+		total_fetchImage = 0.0
 
 		for _, instance := range instancesWithIP {
 			region := instance.region
@@ -429,37 +490,75 @@ func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 			fmt.Print("Created: ")
 			yellow.Println(instance.cDate)
 
-			image := fetchImage(computeClient, instance.imageId)
+			if retrieveImageInfo {
+				start_fetchImage := time.Now()
 
-			fmt.Print("Image Name: ")
-			yellow.Println(image.name)
+				image := fetchImage(computeClient, instance.imageId) // TODO: Performance hit: this adds ~100 ms per image lookup
 
-			fmt.Print("Image ID: ")
-			yellow.Println(instance.imageId)
+				duration_fetchImage := time.Since(start_fetchImage) // TODO: remove timer
+				total_fetchImage += float64(duration_fetchImage.Seconds())
 
-			fmt.Println("Free form image Tags: ")
+				fmt.Print("Image Name: ")
+				yellow.Println(image.name)
 
-			for name, value := range image.freeTags {
-				faint.Print(name + ": " + value + " | ")
-			}
+				fmt.Print("Image ID: ")
+				yellow.Println(instance.imageId)
 
-			fmt.Println("")
+				fmt.Println("Free form image Tags: ")
 
-			fmt.Println("Defined image Tags: ")
-			for tagNs, tags := range image.definedTags {
-				// if tagNs != "ohai_required" {
-				for key, value := range tags {
-					faint.Print(tagNs + "." + key + ": " + value.(string) + " | ")
+				for name, value := range image.freeTags {
+					faint.Print(name + ": " + value + " | ")
 				}
-				// }
+
+				fmt.Println("")
+
+				fmt.Println("Defined image Tags: ")
+				for tagNs, tags := range image.definedTags {
+					// if tagNs != "ohai_required" {
+					for key, value := range tags {
+						faint.Print(tagNs + "." + key + ": " + value.(string) + " | ")
+					}
+					// }
+				}
+				fmt.Println("")
 			}
 
 			fmt.Println("")
-			fmt.Println("")
+		}
+
+		fmt.Print("Execution time of fetchImage function (s): ")
+		fmt.Println(total_fetchImage)
+		// fmt.Println((math.Round(total_fetchImage*100) / 100) / 1000)
+	}
+	duration := time.Since(start_findInstances) // TODO: remove timer
+	fmt.Print("Execution time of findInstances function: ")
+	fmt.Println(duration)
+}
+
+// TODO: Combine with findClusters
+func searchClusters(pattern string, clusters []Cluster) []Cluster {
+	var matches []Cluster
+
+	// Handle simple wildcard
+	if pattern == "*" {
+		pattern = ".*"
+	}
+
+	for _, cluster := range clusters {
+		match, _ := regexp.MatchString(pattern, cluster.name)
+		if match {
+			matches = append(matches, cluster)
 		}
 	}
 
-	os.Exit(0)
+	if logLevel == "DEBUG" {
+		fmt.Println("\nMatches")
+		for cluster := range matches {
+			fmt.Println(cluster)
+		}
+	}
+
+	return matches
 }
 
 func findClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string, flagSearchString string) {
@@ -477,12 +576,10 @@ func findClusters(containerEngineClient containerengine.ContainerEngineClient, c
 			fmt.Println("")
 		}
 	}
-
-	os.Exit(0)
 }
 
 func listInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) {
-	instances := fetchInstances(computeClient, compartmentId, vnetClient)
+	instances := fetchInstances(computeClient, compartmentId)
 	// returns []Instance
 
 	for _, instance := range instances {
@@ -532,6 +629,8 @@ func listInstances(computeClient core.ComputeClient, compartmentId string, vnetC
 }
 
 func fetchImage(computeClient core.ComputeClient, imageId string) Image {
+	start_fetchImage := time.Now()
+
 	var image Image
 
 	response, err := computeClient.GetImage(context.Background(), core.GetImageRequest{ImageId: &imageId})
@@ -546,6 +645,9 @@ func fetchImage(computeClient core.ComputeClient, imageId string) Image {
 		response.LaunchMode,
 	}
 
+	duration := time.Since(start_fetchImage) // TODO: remove timer
+	fmt.Print("--------------- Execution time of fetchImage function: ")
+	fmt.Println(duration)
 	return image
 }
 
@@ -668,62 +770,6 @@ func fetchClusters(containerEngineClient containerengine.ContainerEngineClient, 
 	}
 
 	return Clusters
-}
-
-func searchClusters(pattern string, clusters []Cluster) []Cluster {
-	var matches []Cluster
-
-	// Handle simple wildcard
-	if pattern == "*" {
-		pattern = ".*"
-	}
-
-	for _, cluster := range clusters {
-		match, _ := regexp.MatchString(pattern, cluster.name)
-		if match {
-			matches = append(matches, cluster)
-		}
-	}
-
-	if logLevel == "DEBUG" {
-		fmt.Println("\nMatches")
-		for cluster := range matches {
-			fmt.Println(cluster)
-		}
-	}
-
-	return matches
-}
-
-func fetchVnicAttachments(client core.ComputeClient, compartmentId string) map[string]string {
-	attachments := make(map[string]string)
-
-	initialResponse, err := client.ListVnicAttachments(context.Background(), core.ListVnicAttachmentsRequest{CompartmentId: &compartmentId})
-	checkError(err)
-
-	for _, attachment := range initialResponse.Items {
-		attachments[*attachment.InstanceId] = *attachment.VnicId
-	}
-
-	if initialResponse.OpcNextPage != nil {
-		nextPage := initialResponse.OpcNextPage
-		for {
-			response, err := client.ListVnicAttachments(context.Background(), core.ListVnicAttachmentsRequest{CompartmentId: &compartmentId, Page: nextPage})
-			checkError(err)
-
-			for _, attachment := range response.Items {
-				attachments[*attachment.InstanceId] = *attachment.VnicId
-			}
-
-			if response.OpcNextPage != nil {
-				nextPage = response.OpcNextPage
-			} else {
-				break
-			}
-		}
-	}
-
-	return attachments
 }
 
 func fetchSubnetIds(client core.VirtualNetworkClient, compartmentId string) []string {
@@ -1060,6 +1106,8 @@ func printPortFwSshCommands(client bastion.BastionClient, sessionId *string, tar
 }
 
 func main() {
+	startMain := time.Now()
+
 	// Global flags
 	flagVersion := flag.Bool("v", false, "Show version")
 	flagTenancyId := flag.String("t", "", "tenancy ID name")
@@ -1069,6 +1117,7 @@ func main() {
 	flagListSessions := flag.Bool("ls", false, "list sessions")
 
 	flagSearchString := flag.String("f", "", "search string to search for instance")
+	flagSearchStringWithImageInfo := flag.String("fi", "", "search string to search for instance and return image info")
 
 	flagCompartmentName := flag.String("c", "", "compartment name")
 	flagBastionName := flag.String("b", "", "bastion name")
@@ -1136,7 +1185,6 @@ func main() {
 	// Subcommands and flags
 	computeCmd := flag.NewFlagSet("compute", flag.ExitOnError)
 	flagComputeList := computeCmd.Bool("l", false, "List all instances")
-	flagComputeFind := computeCmd.String("f", "", "Find instance by search pattern")
 
 	imageCmd := flag.NewFlagSet("image", flag.ExitOnError)
 	flagImageList := imageCmd.Bool("l", false, "List all images")
@@ -1191,9 +1239,8 @@ func main() {
 
 		if *flagComputeList {
 			listInstances(computeClient, compartmentId, vnetClient)
-		} else if *flagComputeFind != "" {
-			findInstances(computeClient, vnetClient, compartmentId, *flagSearchString)
 		}
+
 		os.Exit(0)
 
 	case "image":
@@ -1226,7 +1273,18 @@ func main() {
 
 	// If no subcommand is given, we're in legacy mode (instance/cluster search || list bastions || list sessions || create session || check session)
 	case "":
-		if *flagSearchString != "" {
+		if *flagSearchString != "" || *flagSearchStringWithImageInfo != "" {
+			var retrieveImageInfo bool
+			var searchString string
+
+			if *flagSearchStringWithImageInfo != "" {
+				retrieveImageInfo = true
+				searchString = *flagSearchStringWithImageInfo
+			} else {
+				retrieveImageInfo = false
+				searchString = *flagSearchString
+			}
+
 			computeClient, err := core.NewComputeClientWithConfigurationProvider(ociConfig)
 			checkError(err)
 
@@ -1234,12 +1292,18 @@ func main() {
 			checkError(err)
 
 			// Default searches for both instances and clusters
-			findInstances(computeClient, vnetClient, compartmentId, *flagSearchString)
+			findInstances(computeClient, vnetClient, compartmentId, searchString, retrieveImageInfo)
 
 			containerEngineClient, err := containerengine.NewContainerEngineClientWithConfigurationProvider(ociConfig)
 			checkError(err)
 
-			findClusters(containerEngineClient, compartmentId, *flagSearchString)
+			findClusters(containerEngineClient, compartmentId, searchString)
+
+			duration := time.Since(startMain) // TODO: remove timer
+			fmt.Print("Total execution time of FIND operation: ")
+			fmt.Println(duration)
+
+			os.Exit(0)
 		}
 
 		bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(ociConfig)
