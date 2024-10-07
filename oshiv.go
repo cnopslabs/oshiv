@@ -29,6 +29,7 @@ var blue = color.New(color.FgCyan)
 var yellowBold = color.New(color.FgYellow, color.Bold)
 var yellow = color.New(color.FgYellow)
 var faint = color.New(color.Faint)
+var faintUnder = color.New(color.Faint, color.Underline)
 var headerFmt = color.New(color.FgCyan, color.Underline).SprintfFunc()
 var columnFmt = color.New(color.FgYellow).SprintfFunc()
 
@@ -253,6 +254,117 @@ func fetchVnicAttachments(client core.ComputeClient, compartmentId string) map[s
 	return attachments
 }
 
+func fetchImage(computeClient core.ComputeClient, imageId string) Image {
+	var image Image
+
+	response, err := computeClient.GetImage(context.Background(), core.GetImageRequest{ImageId: &imageId})
+	checkError(err)
+
+	image = Image{
+		*response.DisplayName,
+		*response.Id,
+		*response.TimeCreated,
+		response.FreeformTags,
+		response.DefinedTags,
+		response.LaunchMode,
+	}
+
+	return image
+}
+
+func fetchImages(computeClient core.ComputeClient, compartmentId string) []Image {
+	var images []Image
+	var pageCount int
+	pageCount = 0
+
+	// Todo: pages
+	fmt.Println(compartmentId)
+	fmt.Println(pageCount)
+
+	initialResponse, err := computeClient.ListImages(context.Background(), core.ListImagesRequest{CompartmentId: &compartmentId})
+	checkError(err)
+
+	for _, item := range initialResponse.Items {
+		pageCount += 1
+		fmt.Println(pageCount)
+		// if item.LaunchMode == core.ImageLaunchModeCustom {
+		image := Image{
+			*item.DisplayName,
+			*item.Id,
+			*item.TimeCreated,
+			item.FreeformTags,
+			item.DefinedTags,
+			item.LaunchMode,
+		}
+
+		images = append(images, image)
+		// }
+	}
+
+	if initialResponse.OpcNextPage != nil {
+		pageCount += 1
+		fmt.Println(pageCount)
+
+		nextPage := initialResponse.OpcNextPage
+		for {
+			response, err := computeClient.ListImages(context.Background(), core.ListImagesRequest{CompartmentId: &compartmentId, Page: nextPage})
+			checkError(err)
+
+			for _, item := range initialResponse.Items {
+				// if item.LaunchMode == core.ImageLaunchModeCustom {
+				image := Image{
+					*item.DisplayName,
+					*item.Id,
+					*item.TimeCreated,
+					item.FreeformTags,
+					item.DefinedTags,
+					item.LaunchMode,
+				}
+
+				images = append(images, image)
+				// }
+			}
+
+			if response.OpcNextPage != nil {
+				nextPage = response.OpcNextPage
+			} else {
+				break
+			}
+		}
+	}
+
+	fmt.Println(strconv.Itoa(pageCount) + "pages")
+	return images
+}
+
+func listImages(computeClient core.ComputeClient, compartmentId string) {
+	images := fetchImages(computeClient, compartmentId)
+
+	for _, image := range images {
+		fmt.Print("Name: ")
+		blue.Println(image.name)
+
+		fmt.Print("ID: ")
+		yellow.Println(image.id)
+
+		fmt.Print("Create date: ")
+		yellow.Println(image.cDate)
+
+		fmt.Println("Tags: ")
+
+		for k, v := range image.freeTags {
+			yellow.Println(k + ": " + v)
+		}
+
+		fmt.Print("Launch mode: ")
+		yellow.Println(image.launchMode)
+
+		fmt.Println("")
+	}
+
+	fmt.Println(strconv.Itoa(len(images)) + " images found")
+}
+
 func fetchInstances(computeClient core.ComputeClient, compartmentId string) []Instance {
 	var instances []Instance
 
@@ -327,8 +439,7 @@ func fetchInstances(computeClient core.ComputeClient, compartmentId string) []In
 	return instances
 }
 
-// TODO: Combine with findInstances
-func searchInstances(pattern string, instances []Instance) []Instance {
+func matchInstances(pattern string, instances []Instance) []Instance {
 	var matches []Instance
 
 	// Handle simple wildcard
@@ -365,7 +476,7 @@ func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 	// returns []Instance
 
 	// Search all instances and return instances that match by name
-	instanceMatches := searchInstances(pattern, instances)
+	instanceMatches := matchInstances(pattern, instances)
 
 	var batchFetchAllIps bool
 	matchCount := len(instanceMatches)
@@ -475,19 +586,37 @@ func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 
 				fmt.Println("Free form image Tags: ")
 
-				for name, value := range image.freeTags {
-					faint.Print(name + ": " + value + " | ")
+				freeformTagKeys := make([]string, 0, len(image.freeTags))
+				for key := range image.freeTags {
+					freeformTagKeys = append(freeformTagKeys, key)
+				}
+				sort.Strings(freeformTagKeys)
+
+				faint.Print("| ")
+				for _, key := range freeformTagKeys {
+					faint.Print(key + ": " + image.freeTags[key] + " | ")
 				}
 
 				fmt.Println("")
 
 				fmt.Println("Defined image Tags: ")
 				for tagNs, tags := range image.definedTags {
-					for key, value := range tags {
-						faint.Print(tagNs + "." + key + ": " + value.(string) + " | ")
+					faintUnder.Println(tagNs)
+
+					definedTagKeys := make([]string, 0, len(tags))
+					for key := range tags {
+						definedTagKeys = append(definedTagKeys, key)
 					}
+					sort.Strings(definedTagKeys)
+
+					faint.Print("| ")
+					for _, key := range definedTagKeys {
+						faint.Print(key + ": " + tags[key].(string) + " | ")
+					}
+
+					fmt.Println("")
+
 				}
-				fmt.Println("")
 			}
 
 			fmt.Println("")
@@ -495,8 +624,7 @@ func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 	}
 }
 
-// TODO: Combine with findClusters
-func searchClusters(pattern string, clusters []Cluster) []Cluster {
+func matchClusters(pattern string, clusters []Cluster) []Cluster {
 	var matches []Cluster
 
 	// Handle simple wildcard
@@ -524,7 +652,7 @@ func searchClusters(pattern string, clusters []Cluster) []Cluster {
 func findClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string, flagSearchString string) {
 	pattern := flagSearchString
 	clusters := fetchClusters(containerEngineClient, compartmentId)
-	clusterMatches := searchClusters(pattern, clusters)
+	clusterMatches := matchClusters(pattern, clusters)
 
 	if len(clusterMatches) > 0 {
 		yellow.Println("OKE Clusters")
@@ -590,117 +718,6 @@ func listInstances(computeClient core.ComputeClient, compartmentId string, vnetC
 
 		fmt.Println("")
 	}
-}
-
-func fetchImage(computeClient core.ComputeClient, imageId string) Image {
-	var image Image
-
-	response, err := computeClient.GetImage(context.Background(), core.GetImageRequest{ImageId: &imageId})
-	checkError(err)
-
-	image = Image{
-		*response.DisplayName,
-		*response.Id,
-		*response.TimeCreated,
-		response.FreeformTags, // TODO: sort tags
-		response.DefinedTags,  // TODO: sort tags
-		response.LaunchMode,
-	}
-
-	return image
-}
-
-func fetchImages(computeClient core.ComputeClient, compartmentId string) []Image {
-	var images []Image
-	var pageCount int
-	pageCount = 0
-
-	// Todo: pages
-	fmt.Println(compartmentId)
-	fmt.Println(pageCount)
-
-	initialResponse, err := computeClient.ListImages(context.Background(), core.ListImagesRequest{CompartmentId: &compartmentId})
-	checkError(err)
-
-	for _, item := range initialResponse.Items {
-		pageCount += 1
-		fmt.Println(pageCount)
-		// if item.LaunchMode == core.ImageLaunchModeCustom {
-		image := Image{
-			*item.DisplayName,
-			*item.Id,
-			*item.TimeCreated,
-			item.FreeformTags,
-			item.DefinedTags,
-			item.LaunchMode,
-		}
-
-		images = append(images, image)
-		// }
-	}
-
-	if initialResponse.OpcNextPage != nil {
-		pageCount += 1
-		fmt.Println(pageCount)
-
-		nextPage := initialResponse.OpcNextPage
-		for {
-			response, err := computeClient.ListImages(context.Background(), core.ListImagesRequest{CompartmentId: &compartmentId, Page: nextPage})
-			checkError(err)
-
-			for _, item := range initialResponse.Items {
-				// if item.LaunchMode == core.ImageLaunchModeCustom {
-				image := Image{
-					*item.DisplayName,
-					*item.Id,
-					*item.TimeCreated,
-					item.FreeformTags,
-					item.DefinedTags,
-					item.LaunchMode,
-				}
-
-				images = append(images, image)
-				// }
-			}
-
-			if response.OpcNextPage != nil {
-				nextPage = response.OpcNextPage
-			} else {
-				break
-			}
-		}
-	}
-
-	fmt.Println(strconv.Itoa(pageCount) + "pages")
-	return images
-}
-
-func listImages(computeClient core.ComputeClient, compartmentId string) {
-	images := fetchImages(computeClient, compartmentId)
-
-	for _, image := range images {
-		fmt.Print("Name: ")
-		blue.Println(image.name)
-
-		fmt.Print("ID: ")
-		yellow.Println(image.id)
-
-		fmt.Print("Create date: ")
-		yellow.Println(image.cDate)
-
-		fmt.Println("Tags: ")
-
-		for k, v := range image.freeTags {
-			yellow.Println(k + ": " + v)
-		}
-
-		fmt.Print("Launch mode: ")
-		yellow.Println(image.launchMode)
-
-		fmt.Println("")
-	}
-
-	fmt.Println(strconv.Itoa(len(images)) + " images found")
 }
 
 func fetchClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string) []Cluster {
