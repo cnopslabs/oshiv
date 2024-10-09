@@ -319,6 +319,8 @@ All flags for oshiv:
     	path to SSH public key
   -f string
     	search string to search for instance
+  -fi string
+    	search string to search for instance and return image info
   -fw
     	Create an SSH port forward session
   -i string
@@ -381,7 +383,6 @@ make release
 - Add tests!
 - Add search capability for NSG rules
 - Generate and use ephemeral SSH keys
-- Switch to more mature cmd line flag parsing library
 - Use logging library
 - When creating a bastion session, only require IP address or instance ID (and lookup the other)
 - Manage SSH client
