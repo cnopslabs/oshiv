@@ -29,7 +29,7 @@ var blue = color.New(color.FgCyan)
 var yellowBold = color.New(color.FgYellow, color.Bold)
 var yellow = color.New(color.FgYellow)
 var faint = color.New(color.Faint)
-var faintUnder = color.New(color.Faint, color.Underline)
+var faintUnder = color.New(color.Faint, color.Underline, color.Italic)
 var headerFmt = color.New(color.FgCyan, color.Underline).SprintfFunc()
 var columnFmt = color.New(color.FgYellow).SprintfFunc()
 
@@ -584,7 +584,7 @@ func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 				fmt.Print("Image ID: ")
 				yellow.Println(instance.imageId)
 
-				fmt.Println("Free form image Tags: ")
+				fmt.Println("Image Tags (Free form): ")
 
 				freeformTagKeys := make([]string, 0, len(image.freeTags))
 				for key := range image.freeTags {
@@ -599,7 +599,7 @@ func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 
 				fmt.Println("")
 
-				fmt.Println("Defined image Tags: ")
+				fmt.Println("Image Tags (Defined): ")
 				for tagNs, tags := range image.definedTags {
 					faintUnder.Println(tagNs)
 
@@ -1247,6 +1247,7 @@ func main() {
 
 	// If no subcommand is given, we're in legacy mode (instance/cluster search || list bastions || list sessions || create session || check session)
 	case "":
+		// We're in instance/cluster search mode
 		if *flagSearchString != "" || *flagSearchStringWithImageInfo != "" {
 			var retrieveImageInfo bool
 			var searchString string
@@ -1276,6 +1277,7 @@ func main() {
 			os.Exit(0)
 		}
 
+		// We're in bastion mode
 		bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(ociConfig)
 		checkError(err)
 
@@ -1302,9 +1304,13 @@ func main() {
 				fmt.Println("Only one bastion found, using it")
 				fmt.Println(bastionName + " (" + bastionId + ")")
 			}
-
 		} else {
 			// There were multiple bastions found so we'll need to know which one to use
+			if logLevel == "DEBUG" {
+				fmt.Println("multiple bastions found, checking to see if one has been specified...")
+				fmt.Println(bastionName + " (" + bastionId + ")")
+			}
+
 			bastionName = checkBastionName(*flagBastionName)
 			bastionId = bastionInfo[bastionName]
 		}
