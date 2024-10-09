@@ -5,6 +5,7 @@ go 1.22.5
 require (
 	github.com/fatih/color v1.17.0
 	github.com/oracle/oci-go-sdk/v65 v65.71.0
+	github.com/rodaine/table v1.3.0
 )
 
 require (
