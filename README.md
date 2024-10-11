@@ -98,8 +98,8 @@ oshiv -h
 
 #### 1. OCI Authentication
 
-This tool will use the credentials set in `$HOME/.oci/config`
-This tool will use the profile set by the `OCI_CLI_PROFILE` environment variable
+oshiv will use the credentials set in `$HOME/.oci/config`
+oshiv will use the profile set by the `OCI_CLI_PROFILE` environment variable
 If the `OCI_CLI_PROFILE` environment variable is not set it will use the DEFAULT profile
 
 *(optional)*
@@ -107,12 +107,16 @@ If the `OCI_CLI_PROFILE` environment variable is not set it will use the DEFAULT
 export OCI_CLI_PROFILE=MYCUSTOMPROFILE
 ```
 
-#### 2. OCI Tenancy
-OCI Tenancy must be set by environment variable (below) or by passing it in with the flag: `-t ocid1.tenancy.oc2..aaaaaaaaabcdefghijklmnopqrstuvwxyz` 
+#### 2. OCI Tenancy Override
 
-```
-export OCI_CLI_TENANCY=ocid1.tenancy.oc2..aaaaaaaaabcdefghijklmnopqrstuvwxyz
-```
+oshiv will attempt to determine tenancy in this order:
+1. Attempt to get tenancy ID from `OCI_CLI_TENANCY` environment variable. (E.g. `export OCI_CLI_TENANCY=ocid1.tenancy.oc2..`)
+
+2. Attempt to get tenancy ID from `-t` flag
+
+3. Attempt to get tenancy ID from OCI config file (`$HOME/.oci/config`)
+
+Patterns `#1` and `#2` above allow you to override your default tenancy.
 
 ### Defaults
 
@@ -276,7 +280,7 @@ oshiv -h
 
 ```
 OCI authentication:
-This tool will use the credentials set in $HOME/.oci/config
+This tool will use the OCI configuration at $HOME/.oci/config
 This tool will use the profile set by the OCI_CLI_PROFILE environment variable
 If the OCI_CLI_PROFILE environment variable is not set it will use the DEFAULT profile
 
@@ -352,6 +356,20 @@ All flags for oshiv:
   -u string
     	SSH user (default "opc")
   -v	Show version
+
+Subcommands:
+compute
+  -l	List all instances
+
+image
+  -f string
+Find images by search pattern
+  -l	List all images
+
+subnet
+  -f string
+Find subnets by search pattern
+  -l	List all subnets
 ```
 
 ## Contribute
