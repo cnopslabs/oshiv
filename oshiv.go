@@ -22,6 +22,7 @@ import (
 )
 
 const logLevel = "INFO" // TODO: switch to logging library
+const showTenancyCompartment = true
 
 var version = "undefined" // Version gets automatically updated during build
 
@@ -29,7 +30,8 @@ var blue = color.New(color.FgCyan)
 var yellowBold = color.New(color.FgYellow, color.Bold)
 var yellow = color.New(color.FgYellow)
 var faint = color.New(color.Faint)
-var faintUnder = color.New(color.Faint, color.Underline, color.Italic)
+var italic = color.New(color.Italic)
+var faintMagenta = color.New(color.Italic, color.FgMagenta)
 var headerFmt = color.New(color.FgCyan, color.Underline).SprintfFunc()
 var columnFmt = color.New(color.FgYellow).SprintfFunc()
 
@@ -139,16 +141,38 @@ func parseSubcommand(firstArg string) string {
 	}
 }
 
-func validateTenancyId(tenancyIdFlag string, client identity.IdentityClient) string {
-	tenancyId, exists := os.LookupEnv("OCI_CLI_TENANCY")
-	if !exists {
+func validateTenancyId(tenancyIdFlag string, client identity.IdentityClient, ociConfig common.ConfigurationProvider) (string, string) {
+	var tenancyId string
+	var err error
+	var env_exists bool
+
+	// 1. Attempt to get tenancy ID from environment variable
+	tenancyId, env_exists = os.LookupEnv("OCI_CLI_TENANCY")
+
+	if !env_exists {
+		// 2. Attempt to get tenancy ID from flag
 		if tenancyIdFlag == "" {
-			fmt.Println("Must pass tenancy ID with -t or set with environment variable OCI_CLI_TENANCY")
-			os.Exit(1)
+			// 3. Attempt to get tenancy ID from OCI config
+			tenancyId, err = ociConfig.TenancyOCID()
+
+			if err != nil {
+				fmt.Println("Unable to determine tenancy ID")
+				os.Exit(1)
+			} else {
+				if logLevel == "DEBUG" {
+					fmt.Println("\nTenancy ID is set via OCI config file to: " + tenancyId)
+				}
+			}
+		} else {
+			tenancyId = tenancyIdFlag
+
+			if logLevel == "DEBUG" {
+				fmt.Println("\nTenancy ID is set via -t flag to: " + tenancyId)
+			}
 		}
 	} else {
 		if logLevel == "DEBUG" {
-			fmt.Println("\nTenancy ID is set via OCI_CLI_TENANCY to: " + tenancyId)
+			fmt.Println("\nTenancy ID is set via OCI_CLI_TENANCY environment variable to: " + tenancyId)
 		}
 	}
 
@@ -160,7 +184,9 @@ func validateTenancyId(tenancyIdFlag string, client identity.IdentityClient) str
 		fmt.Println("\nCurrent tenant: " + *response.Tenancy.Name)
 	}
 
-	return tenancyId
+	tenancyName := *response.Tenancy.Name
+
+	return tenancyId, tenancyName
 }
 
 func checkCompartmentName(flagCompartmentName string) string {
@@ -601,7 +627,7 @@ func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 
 				fmt.Println("Image Tags (Defined): ")
 				for tagNs, tags := range image.definedTags {
-					faintUnder.Println(tagNs)
+					italic.Println(tagNs)
 
 					definedTagKeys := make([]string, 0, len(tags))
 					for key := range tags {
@@ -1117,10 +1143,22 @@ func main() {
 	// This will override the local port for both managed SSH and and port forward sessions
 	flagSshTunnelPortOverrideLocal := flag.Int("tpl", 0, "SSH tunnel local port override")
 
+	// Subcommands and flags
+	computeCmd := flag.NewFlagSet("compute", flag.ExitOnError)
+	flagComputeList := computeCmd.Bool("l", false, "List all instances")
+
+	imageCmd := flag.NewFlagSet("image", flag.ExitOnError)
+	flagImageList := imageCmd.Bool("l", false, "List all images")
+	flagImageFind := imageCmd.String("f", "", "Find images by search pattern")
+
+	subnetCmd := flag.NewFlagSet("subnet", flag.ExitOnError)
+	flagSubnetsList := subnetCmd.Bool("l", false, "List all subnets")
+	flagSubnetsFind := subnetCmd.String("f", "", "Find subnets by search pattern")
+
 	// Extend flag's default usage function
 	flag.Usage = func() {
 		fmt.Println("OCI authentication:")
-		fmt.Println("This tool will use the credentials set in $HOME/.oci/config")
+		fmt.Println("This tool will use the OCI configuration at $HOME/.oci/config")
 		fmt.Println("This tool will use the profile set by the OCI_CLI_PROFILE environment variable")
 		fmt.Println("If the OCI_CLI_PROFILE environment variable is not set it will use the DEFAULT profile")
 
@@ -1152,21 +1190,17 @@ func main() {
 
 		fmt.Fprintf(flag.CommandLine.Output(), "\nAll flags for %s:\n", os.Args[0])
 		flag.PrintDefaults()
+
+		fmt.Println("\nSubcommands:")
+		fmt.Println("compute")
+		fmt.Println("  -l	List all instances")
+		fmt.Println("\nimage")
+		fmt.Println("  -f string\nFind images by search pattern\n  -l	List all images")
+		fmt.Println("\nsubnet")
+		fmt.Println("  -f string\nFind subnets by search pattern\n  -l	List all subnets")
 	}
 
 	flag.Parse()
-
-	// Subcommands and flags
-	computeCmd := flag.NewFlagSet("compute", flag.ExitOnError)
-	flagComputeList := computeCmd.Bool("l", false, "List all instances")
-
-	imageCmd := flag.NewFlagSet("image", flag.ExitOnError)
-	flagImageList := imageCmd.Bool("l", false, "List all images")
-	flagImageFind := imageCmd.String("f", "", "Find images by search pattern")
-
-	subnetsCmd := flag.NewFlagSet("subnets", flag.ExitOnError)
-	flagSubnetsList := subnetsCmd.Bool("l", false, "List all subnets")
-	flagSubnetsFind := subnetsCmd.String("f", "", "Find subnets by search pattern")
 
 	subcommand := parseSubcommand(os.Args[1])
 
@@ -1185,12 +1219,17 @@ func main() {
 	checkError(identityErr)
 
 	// Attempt to get tenancy ID from input and validate it against OCI API
-	tenancyId := validateTenancyId(*flagTenancyId, identityClient)
+	tenancyId, tenancyName := validateTenancyId(*flagTenancyId, identityClient, ociConfig)
+
 	// All actions except listing compartments require a compartment ID, compartment info will contain a map of compartment names and IDs
 	compartmentInfo := fetchCompartmentInfo(tenancyId, identityClient)
 
 	// List all compartments
 	if *flagListCompartments {
+		if showTenancyCompartment {
+			faintMagenta.Println("Tenancy: " + tenancyName)
+		}
+
 		listCompartmentNames(compartmentInfo)
 		os.Exit(0)
 	}
@@ -1199,6 +1238,10 @@ func main() {
 	// Attempt to get compartment name from input then lookup compartment ID
 	compartmentName := checkCompartmentName(*flagCompartmentName)
 	compartmentId := lookupCompartmentId(compartmentInfo, compartmentName)
+
+	if showTenancyCompartment {
+		faintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartmentName + ")")
+	}
 
 	// Subcommands
 	switch subcommand {
@@ -1231,8 +1274,8 @@ func main() {
 		}
 		os.Exit(0)
 
-	case "subnets":
-		subnetsCmd.Parse(os.Args[2:])
+	case "subnet":
+		subnetCmd.Parse(os.Args[2:])
 
 		vnetClient, err := core.NewVirtualNetworkClientWithConfigurationProvider(ociConfig)
 		checkError(err)
