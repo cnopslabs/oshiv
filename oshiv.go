@@ -189,24 +189,6 @@ func validateTenancyId(tenancyIdFlag string, client identity.IdentityClient, oci
 	return tenancyId, tenancyName
 }
 
-func checkCompartmentName(flagCompartmentName string) string {
-	var compartmentName string
-	compartmentIdEnv, exists := os.LookupEnv("OCI_COMPARTMENT_NAME")
-	if exists {
-		compartmentName = compartmentIdEnv
-		if logLevel == "DEBUG" {
-			fmt.Println("Compartment name is set via OCI_COMPARTMENT_NAME to: " + compartmentName)
-		}
-	} else if flagCompartmentName == "" {
-		fmt.Println("Must pass compartment name with -c or set with environment variable OCI_COMPARTMENT_NAME")
-		os.Exit(1)
-	} else {
-		compartmentName = flagCompartmentName
-	}
-
-	return compartmentName
-}
-
 func fetchCompartmentInfo(tenancyId string, client identity.IdentityClient) map[string]string {
 	response, err := client.ListCompartments(context.Background(), identity.ListCompartmentsRequest{CompartmentId: &tenancyId})
 	checkError(err)
@@ -218,6 +200,54 @@ func fetchCompartmentInfo(tenancyId string, client identity.IdentityClient) map[
 	}
 
 	return compartmentInfo
+}
+
+func checkCompartmentInput(flagCompartmentName string, compartmentInfo map[string]string, identityClient identity.IdentityClient) (string, string) {
+	var compartmentName string
+	var exists bool
+	var compartmentId string
+
+	// Check if compartment name is set as env var
+	compartmentName, exists = os.LookupEnv("OCI_COMPARTMENT_NAME")
+
+	if !exists {
+		// Compartment name is NOT set as env var, see if its passed in by the flag
+		if flagCompartmentName != "" {
+			// Compartment name is passed in by the flag, lookup ID
+			compartmentId = lookupCompartmentId(compartmentInfo, flagCompartmentName)
+		} else {
+			// Compartment name is NOT passed, Let's secretly support some unofficial environment variables for compartment ID
+			compartmentId, exists = os.LookupEnv("OCI_COMPARTMENT_ID")
+
+			if !exists {
+				compartmentId, exists = os.LookupEnv("CID")
+
+				if !exists {
+					fmt.Println("Must pass compartment name with -c or set with environment variable OCI_COMPARTMENT_NAME")
+					os.Exit(1)
+				} else {
+					compartmentName = fetchCompartmentName(identityClient, compartmentId)
+				}
+			} else {
+				compartmentName = fetchCompartmentName(identityClient, compartmentId)
+			}
+		}
+
+	} else {
+		// Compartment name is set as env var, lookup ID
+		compartmentId = lookupCompartmentId(compartmentInfo, compartmentName)
+	}
+
+	return compartmentId, compartmentName
+}
+
+func fetchCompartmentName(client identity.IdentityClient, compartmentId string) string {
+	response, err := client.GetCompartment(context.Background(), identity.GetCompartmentRequest{CompartmentId: &compartmentId})
+	checkError(err)
+
+	compartmentName := *response.Compartment.Name
+
+	return compartmentName
 }
 
 func lookupCompartmentId(compartmentInfo map[string]string, compartmentName string) string {
@@ -1215,6 +1245,8 @@ func main() {
 	ociConfig := configureProvider()
 
 	// identityClient is always required
+	// var identityClient identity.IdentityClient
+	// var identityErr error
 	identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
 	checkError(identityErr)
 
@@ -1235,9 +1267,9 @@ func main() {
 	}
 
 	// <-- Anything beyond this point requires a compartment -->
-	// Attempt to get compartment name from input then lookup compartment ID
-	compartmentName := checkCompartmentName(*flagCompartmentName)
-	compartmentId := lookupCompartmentId(compartmentInfo, compartmentName)
+	// Attempt to get compartment name / ID from input then lookup compartment ID if necessary
+	// TODO: Document that name or ID can be used (vs. only name)
+	compartmentId, compartmentName := checkCompartmentInput(*flagCompartmentName, compartmentInfo, identityClient)
 
 	if showTenancyCompartment {
 		faintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartmentName + ")")
