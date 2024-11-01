@@ -4,7 +4,7 @@ go 1.22.5
 
 require (
 	github.com/fatih/color v1.17.0
-	github.com/go-ini/ini v1.67.0
+	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3
 	github.com/oracle/oci-go-sdk/v65 v65.71.0
 	github.com/rodaine/table v1.3.0
 )

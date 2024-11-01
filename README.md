@@ -363,13 +363,26 @@ compute
 
 image
   -f string
-Find images by search pattern
+      Find images by search pattern
   -l	List all images
 
 subnet
   -f string
-Find subnets by search pattern
+      Find subnets by search pattern
   -l	List all subnets
+
+policy
+  -f string
+      Find policies by name search pattern
+  -fs string
+      Find policy by statement search pattern
+  -l List all policies
+  -n Print only policy names (no statements)
+
+compart
+   -f
+      Find compartments by search pattern
+   -l List all compartments
 ```
 
 ## Contribute
