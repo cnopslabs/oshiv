@@ -97,6 +97,27 @@ func (subnets subnetsByCidr) Len() int           { return len(subnets) }
 func (subnets subnetsByCidr) Less(i, j int) bool { return subnets[i].cidr < subnets[j].cidr }
 func (subnets subnetsByCidr) Swap(i, j int)      { subnets[i], subnets[j] = subnets[j], subnets[i] }
 
+type Policy struct {
+	name       string
+	id         string
+	statements []string
+}
+
+// Adding this because there's no set object type, may be worth implementing my own
+func policyContains(policies []Policy, policy Policy) bool {
+	var policyExists bool
+
+	for _, existing_policy := range policies {
+		if policy.name == existing_policy.name {
+			policyExists = true
+		} else {
+			policyExists = false
+		}
+	}
+
+	return policyExists
+}
+
 func checkError(err error) {
 	if err != nil {
 		panic(err)
@@ -110,7 +131,7 @@ func homeDir() string {
 	return homeDir
 }
 
-func configureProvider() common.ConfigurationProvider {
+func setupOciConfig() common.ConfigurationProvider {
 	var config common.ConfigurationProvider
 
 	profile, exists := os.LookupEnv("OCI_CLI_PROFILE")
@@ -189,6 +210,67 @@ func validateTenancyId(tenancyIdFlag string, client identity.IdentityClient, oci
 	return tenancyId, tenancyName
 }
 
+func checkCompartmentInput(flagCompartmentName string, compartmentInfo map[string]string, identityClient identity.IdentityClient, tenancyId string, tenancyName string) (string, string) {
+	var compartmentName string
+	var exists bool
+	var compartmentId string
+
+	// Check if compartment name is set as env var
+	compartmentName, exists = os.LookupEnv("OCI_COMPARTMENT_NAME")
+
+	if !exists {
+		// Compartment name is NOT set as env var, see if its passed in by the flag
+		if flagCompartmentName != "" {
+			// Compartment name is passed in by the flag, lookup ID
+			// TODO: This doesn't work for root compartment. Need to check of compartment name is root compartment (I.e. tenant)
+			compartmentId = lookupCompartmentId(compartmentInfo, flagCompartmentName)
+		} else {
+			// Compartment name is NOT passed, Let's secretly support some unofficial environment variables for compartment ID
+			compartmentId, exists = os.LookupEnv("OCI_COMPARTMENT_ID")
+
+			if !exists {
+				compartmentId, exists = os.LookupEnv("CID")
+
+				if !exists {
+					// fmt.Println("Must pass compartment name with -c or set with environment variable OCI_COMPARTMENT_NAME")
+					// os.Exit(1)
+
+					// No compartment name or ID passed, using the root compartment
+					fmt.Println("No compartment name or ID set, using root compartment.")
+					compartmentName = tenancyName
+					compartmentId = tenancyId
+
+				} else {
+					compartmentName = fetchCompartmentName(identityClient, compartmentId)
+				}
+			} else {
+				compartmentName = fetchCompartmentName(identityClient, compartmentId)
+			}
+		}
+
+	} else {
+		// Compartment name is set as env var, lookup ID (unless root compartment)
+
+		// Handle root compartment
+		if compartmentName == tenancyName {
+			compartmentId = tenancyId
+		} else {
+			compartmentId = lookupCompartmentId(compartmentInfo, compartmentName)
+		}
+	}
+
+	return compartmentId, compartmentName
+}
+
+func lookupCompartmentId(compartmentInfo map[string]string, compartmentName string) string {
+	compartmentId := compartmentInfo[compartmentName]
+	if logLevel == "DEBUG" {
+		fmt.Println("\n" + compartmentName + "'s compartment ID is " + compartmentId)
+	}
+
+	return compartmentId
+}
+
 func fetchCompartmentInfo(tenancyId string, client identity.IdentityClient) map[string]string {
 	response, err := client.ListCompartments(context.Background(), identity.ListCompartmentsRequest{CompartmentId: &tenancyId})
 	checkError(err)
@@ -202,45 +284,6 @@ func fetchCompartmentInfo(tenancyId string, client identity.IdentityClient) map[
 	return compartmentInfo
 }
 
-func checkCompartmentInput(flagCompartmentName string, compartmentInfo map[string]string, identityClient identity.IdentityClient) (string, string) {
-	var compartmentName string
-	var exists bool
-	var compartmentId string
-
-	// Check if compartment name is set as env var
-	compartmentName, exists = os.LookupEnv("OCI_COMPARTMENT_NAME")
-
-	if !exists {
-		// Compartment name is NOT set as env var, see if its passed in by the flag
-		if flagCompartmentName != "" {
-			// Compartment name is passed in by the flag, lookup ID
-			compartmentId = lookupCompartmentId(compartmentInfo, flagCompartmentName)
-		} else {
-			// Compartment name is NOT passed, Let's secretly support some unofficial environment variables for compartment ID
-			compartmentId, exists = os.LookupEnv("OCI_COMPARTMENT_ID")
-
-			if !exists {
-				compartmentId, exists = os.LookupEnv("CID")
-
-				if !exists {
-					fmt.Println("Must pass compartment name with -c or set with environment variable OCI_COMPARTMENT_NAME")
-					os.Exit(1)
-				} else {
-					compartmentName = fetchCompartmentName(identityClient, compartmentId)
-				}
-			} else {
-				compartmentName = fetchCompartmentName(identityClient, compartmentId)
-			}
-		}
-
-	} else {
-		// Compartment name is set as env var, lookup ID
-		compartmentId = lookupCompartmentId(compartmentInfo, compartmentName)
-	}
-
-	return compartmentId, compartmentName
-}
-
 func fetchCompartmentName(client identity.IdentityClient, compartmentId string) string {
 	response, err := client.GetCompartment(context.Background(), identity.GetCompartmentRequest{CompartmentId: &compartmentId})
 	checkError(err)
@@ -250,16 +293,7 @@ func fetchCompartmentName(client identity.IdentityClient, compartmentId string) 
 	return compartmentName
 }
 
-func lookupCompartmentId(compartmentInfo map[string]string, compartmentName string) string {
-	compartmentId := compartmentInfo[compartmentName]
-	if logLevel == "DEBUG" {
-		fmt.Println("\n" + compartmentName + "'s compartment ID is " + compartmentId)
-	}
-
-	return compartmentId
-}
-
-func listCompartmentNames(compartmentInfo map[string]string) {
+func listCompartmentNames(compartmentInfo map[string]string, tenancyId string, tenancyName string) {
 	tbl := table.New("Compartment Name", "OCID")
 	tbl.WithHeaderFormatter(headerFmt).WithFirstColumnFormatter(columnFmt)
 
@@ -269,6 +303,9 @@ func listCompartmentNames(compartmentInfo map[string]string) {
 	}
 	sort.Strings(compartmentNames)
 
+	// List the root compartment name and ID first
+	tbl.AddRow(tenancyName, tenancyId)
+
 	for _, compartmentName := range compartmentNames {
 		tbl.AddRow(compartmentName, compartmentInfo[compartmentName])
 	}
@@ -277,6 +314,152 @@ func listCompartmentNames(compartmentInfo map[string]string) {
 
 	fmt.Println("\nTo set compartment, export OCI_COMPARTMENT_NAME:")
 	yellow.Println("   export OCI_COMPARTMENT_NAME=")
+}
+
+func findCompartments(tenancyId string, identityClient identity.IdentityClient, flagCompartmentFind string, compartmentInfo map[string]string) {
+	pattern := flagCompartmentFind
+
+	compartments := fetchCompartmentInfo(tenancyId, identityClient)
+
+	var matches []string
+
+	if pattern == "*" {
+		pattern = ".*"
+	}
+
+	for name := range compartments {
+		match, _ := regexp.MatchString(pattern, name)
+		if match {
+			matches = append(matches, name)
+		}
+	}
+
+	matchCount := len(matches)
+	faint.Println(strconv.Itoa(matchCount) + " matches")
+
+	tbl := table.New("Compartment Name", "OCID")
+	tbl.WithHeaderFormatter(headerFmt).WithFirstColumnFormatter(columnFmt)
+
+	for _, compartmentName := range matches {
+		compartmentId := lookupCompartmentId(compartmentInfo, compartmentName)
+		// yellow.Print(compartmentName)
+		// fmt.Println(compartmentId)
+		tbl.AddRow(compartmentName, compartmentId)
+	}
+
+	tbl.Print()
+
+	fmt.Println("\nTo set compartment, export OCI_COMPARTMENT_NAME:")
+	yellow.Println("   export OCI_COMPARTMENT_NAME=")
+}
+
+func fetchImage(computeClient core.ComputeClient, imageId string) Image {
+	var image Image
+
+	response, err := computeClient.GetImage(context.Background(), core.GetImageRequest{ImageId: &imageId})
+	checkError(err)
+
+	image = Image{
+		*response.DisplayName,
+		*response.Id,
+		*response.TimeCreated,
+		response.FreeformTags,
+		response.DefinedTags,
+		response.LaunchMode,
+	}
+
+	return image
+}
+
+func fetchImages(computeClient core.ComputeClient, compartmentId string) []Image {
+	var images []Image
+	var pageCount int
+	pageCount = 0
+
+	fmt.Println(compartmentId)
+	fmt.Println(pageCount)
+
+	initialResponse, err := computeClient.ListImages(context.Background(), core.ListImagesRequest{CompartmentId: &compartmentId})
+	checkError(err)
+
+	for _, item := range initialResponse.Items {
+		pageCount += 1
+		// if item.LaunchMode == core.ImageLaunchModeCustom {
+		image := Image{
+			*item.DisplayName,
+			*item.Id,
+			*item.TimeCreated,
+			item.FreeformTags,
+			item.DefinedTags,
+			item.LaunchMode,
+		}
+
+		images = append(images, image)
+		// }
+	}
+
+	if initialResponse.OpcNextPage != nil {
+		pageCount += 1
+		nextPage := initialResponse.OpcNextPage
+
+		for {
+			response, err := computeClient.ListImages(context.Background(), core.ListImagesRequest{CompartmentId: &compartmentId, Page: nextPage})
+			checkError(err)
+
+			for _, item := range response.Items {
+				// if item.LaunchMode == core.ImageLaunchModeCustom {
+				image := Image{
+					*item.DisplayName,
+					*item.Id,
+					*item.TimeCreated,
+					item.FreeformTags,
+					item.DefinedTags,
+					item.LaunchMode,
+				}
+
+				images = append(images, image)
+				// }
+			}
+
+			if response.OpcNextPage != nil {
+				nextPage = response.OpcNextPage
+			} else {
+				break
+			}
+		}
+	}
+	// Todo: remove after verifying pagination is working correctly
+	fmt.Println(strconv.Itoa(pageCount) + "pages")
+
+	return images
+}
+
+func listImages(computeClient core.ComputeClient, compartmentId string) {
+	images := fetchImages(computeClient, compartmentId)
+
+	for _, image := range images {
+		fmt.Print("Name: ")
+		blue.Println(image.name)
+
+		fmt.Print("ID: ")
+		yellow.Println(image.id)
+
+		fmt.Print("Create date: ")
+		yellow.Println(image.cDate)
+
+		fmt.Println("Tags: ")
+
+		for k, v := range image.freeTags {
+			yellow.Println(k + ": " + v)
+		}
+
+		fmt.Print("Launch mode: ")
+		yellow.Println(image.launchMode)
+
+		fmt.Println("")
+	}
+
+	fmt.Println(strconv.Itoa(len(images)) + " images found")
 }
 
 func fetchVnicAttachments(client core.ComputeClient, compartmentId string) map[string]string {
@@ -310,115 +493,27 @@ func fetchVnicAttachments(client core.ComputeClient, compartmentId string) map[s
 	return attachments
 }
 
-func fetchImage(computeClient core.ComputeClient, imageId string) Image {
-	var image Image
-
-	response, err := computeClient.GetImage(context.Background(), core.GetImageRequest{ImageId: &imageId})
+func fetchPrivateIp(client core.VirtualNetworkClient, vnicId string) string {
+	response, err := client.GetVnic(context.Background(), core.GetVnicRequest{VnicId: &vnicId})
 	checkError(err)
 
-	image = Image{
-		*response.DisplayName,
-		*response.Id,
-		*response.TimeCreated,
-		response.FreeformTags,
-		response.DefinedTags,
-		response.LaunchMode,
-	}
-
-	return image
+	return *response.Vnic.PrivateIp
 }
 
-func fetchImages(computeClient core.ComputeClient, compartmentId string) []Image {
-	var images []Image
-	var pageCount int
-	pageCount = 0
+func fetchPrivateIps(client core.VirtualNetworkClient, compartmentId string) map[string]string {
+	vNicIdsToIps := make(map[string]string)
+	subnetIds := fetchSubnetIds(client, compartmentId)
 
-	// Todo: pages
-	fmt.Println(compartmentId)
-	fmt.Println(pageCount)
+	for _, subnetId := range subnetIds {
+		response, err := client.ListPrivateIps(context.Background(), core.ListPrivateIpsRequest{SubnetId: &subnetId})
+		checkError(err)
 
-	initialResponse, err := computeClient.ListImages(context.Background(), core.ListImagesRequest{CompartmentId: &compartmentId})
-	checkError(err)
-
-	for _, item := range initialResponse.Items {
-		pageCount += 1
-		fmt.Println(pageCount)
-		// if item.LaunchMode == core.ImageLaunchModeCustom {
-		image := Image{
-			*item.DisplayName,
-			*item.Id,
-			*item.TimeCreated,
-			item.FreeformTags,
-			item.DefinedTags,
-			item.LaunchMode,
-		}
-
-		images = append(images, image)
-		// }
-	}
-
-	if initialResponse.OpcNextPage != nil {
-		pageCount += 1
-		fmt.Println(pageCount)
-
-		nextPage := initialResponse.OpcNextPage
-		for {
-			response, err := computeClient.ListImages(context.Background(), core.ListImagesRequest{CompartmentId: &compartmentId, Page: nextPage})
-			checkError(err)
-
-			for _, item := range initialResponse.Items {
-				// if item.LaunchMode == core.ImageLaunchModeCustom {
-				image := Image{
-					*item.DisplayName,
-					*item.Id,
-					*item.TimeCreated,
-					item.FreeformTags,
-					item.DefinedTags,
-					item.LaunchMode,
-				}
-
-				images = append(images, image)
-				// }
-			}
-
-			if response.OpcNextPage != nil {
-				nextPage = response.OpcNextPage
-			} else {
-				break
-			}
+		for _, item := range response.Items {
+			vNicIdsToIps[*item.VnicId] = *item.IpAddress
 		}
 	}
 
-	fmt.Println(strconv.Itoa(pageCount) + "pages")
-	return images
-}
-
-func listImages(computeClient core.ComputeClient, compartmentId string) {
-	images := fetchImages(computeClient, compartmentId)
-
-	for _, image := range images {
-		fmt.Print("Name: ")
-		blue.Println(image.name)
-
-		fmt.Print("ID: ")
-		yellow.Println(image.id)
-
-		fmt.Print("Create date: ")
-		yellow.Println(image.cDate)
-
-		fmt.Println("Tags: ")
-
-		for k, v := range image.freeTags {
-			yellow.Println(k + ": " + v)
-		}
-
-		fmt.Print("Launch mode: ")
-		yellow.Println(image.launchMode)
-
-		fmt.Println("")
-	}
-
-	fmt.Println(strconv.Itoa(len(images)) + " images found")
+	return vNicIdsToIps
 }
 
 func fetchInstances(computeClient core.ComputeClient, compartmentId string) []Instance {
@@ -495,7 +590,58 @@ func fetchInstances(computeClient core.ComputeClient, compartmentId string) []In
 	return instances
 }
 
+func listInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) {
+	instances := fetchInstances(computeClient, compartmentId)
+	// returns []Instance
+
+	for _, instance := range instances {
+		region := instance.region
+		ad := instance.ad
+		strToRemove := "bKwM:" + region + "-"
+		ad_short := strings.Replace(ad, strToRemove, "", -1)
+
+		fd := instance.fd
+		fd_short := strings.Replace(fd, "FAULT-DOMAIN", "FD", -1)
+
+		fmt.Print("Name: ")
+		blue.Println(instance.name)
+
+		fmt.Print("ID: ")
+		yellow.Println(instance.id)
+
+		fmt.Print("Private IP: ")
+		yellow.Print(instance.ip)
+
+		fmt.Print(" FD: ")
+		yellow.Print(fd_short)
+
+		fmt.Print(" AD: ")
+		yellow.Println(ad_short)
+
+		fmt.Print("Shape: ")
+		yellow.Print(instance.shape)
+
+		fmt.Print(" Mem: ")
+		yellow.Print(instance.mem)
+
+		fmt.Print(" vCPUs: ")
+		yellow.Println(instance.vCPUs)
+
+		fmt.Print("State: ")
+		yellow.Println(instance.state)
+
+		fmt.Print("Created: ")
+		yellow.Println(instance.cDate)
+
+		fmt.Print("Image ID: ")
+		yellow.Println(instance.imageId)
+
+		fmt.Println("")
+	}
+}
+
 func matchInstances(pattern string, instances []Instance) []Instance {
+	// TODO: Maybe move this back to findInstances for consistency
 	var matches []Instance
 
 	// Handle simple wildcard
@@ -640,6 +786,9 @@ func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 				fmt.Print("Image ID: ")
 				yellow.Println(instance.imageId)
 
+				fmt.Print("Image Created: ")
+				yellow.Println(image.cDate)
+
 				fmt.Println("Image Tags (Free form): ")
 
 				freeformTagKeys := make([]string, 0, len(image.freeTags))
@@ -678,6 +827,35 @@ func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 			fmt.Println("")
 		}
 	}
+}
+
+func fetchClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string) []Cluster {
+	// TODO: pagination
+	var Clusters []Cluster
+
+	initialResponse, err := containerEngineClient.ListClusters(context.Background(), containerengine.ListClustersRequest{
+		CompartmentId: &compartmentId,
+		// LifecycleState: core.InstanceLifecycleStateRunning,
+	})
+	checkError(err)
+
+	for _, cluster := range initialResponse.Items {
+		// fmt.Println(cluster)/
+
+		clusterId := *cluster.Id
+		clusterName := *cluster.Name
+		// clusterPrivateEndpoint := *cluster.Endpoints.PrivateEndpoint
+
+		clusterPrivateEndpointIp, clusterPrivateEndpointPort, found := strings.Cut(*cluster.Endpoints.PrivateEndpoint, ":")
+		// clusterPrivateEndpointPort := *cluster.Endpoints.PrivateEndpoint
+
+		if found {
+			cluster := Cluster{clusterName, clusterId, clusterPrivateEndpointIp, clusterPrivateEndpointPort}
+			Clusters = append(Clusters, cluster)
+		}
+	}
+
+	return Clusters
 }
 
 func matchClusters(pattern string, clusters []Cluster) []Cluster {
@@ -726,82 +904,166 @@ func findClusters(containerEngineClient containerengine.ContainerEngineClient, c
 	}
 }
 
-func listInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) {
-	instances := fetchInstances(computeClient, compartmentId)
-	// returns []Instance
+func fetchPolicies(identityClient identity.IdentityClient, compartmentId string) []Policy {
+	var policies []Policy
+	var pageCount int
+	pageCount = 0
 
-	for _, instance := range instances {
-		region := instance.region
-		ad := instance.ad
-		strToRemove := "bKwM:" + region + "-"
-		ad_short := strings.Replace(ad, strToRemove, "", -1)
+	initialResponse, err := identityClient.ListPolicies(context.Background(), identity.ListPoliciesRequest{CompartmentId: &compartmentId})
+	checkError(err)
 
-		fd := instance.fd
-		fd_short := strings.Replace(fd, "FAULT-DOMAIN", "FD", -1)
+	for _, policy := range initialResponse.Items {
+		pageCount += 1
 
+		newPolicy := Policy{
+			*policy.Name,
+			*policy.Id,
+			policy.Statements,
+		}
+
+		policies = append(policies, newPolicy)
+	}
+
+	if initialResponse.OpcNextPage != nil {
+		pageCount += 1
+		nextPage := initialResponse.OpcNextPage
+
+		for {
+			response, err := identityClient.ListPolicies(context.Background(), identity.ListPoliciesRequest{CompartmentId: &compartmentId, Page: nextPage})
+			checkError(err)
+
+			for _, policy := range response.Items {
+				pageCount += 1
+
+				newPolicy := Policy{
+					*policy.Name,
+					*policy.Id,
+					policy.Statements,
+				}
+
+				policies = append(policies, newPolicy)
+			}
+
+			if response.OpcNextPage != nil {
+				nextPage = response.OpcNextPage
+			} else {
+				break
+			}
+		}
+	}
+
+	fmt.Println("Returned " + strconv.Itoa(pageCount) + "pages")
+
+	return policies
+}
+
+func listPolicies(identityClient identity.IdentityClient, compartmentId string) {
+	// TODO: switch to use fetchPolicies
+	// TODO: support -n (print name only)
+	response, err := identityClient.ListPolicies(context.Background(), identity.ListPoliciesRequest{CompartmentId: &compartmentId})
+	checkError(err)
+
+	for _, policy := range response.Items {
 		fmt.Print("Name: ")
-		blue.Println(instance.name)
+		blue.Println(*policy.Name)
 
 		fmt.Print("ID: ")
-		yellow.Println(instance.id)
+		yellow.Println(*policy.Id)
 
-		fmt.Print("Private IP: ")
-		yellow.Print(instance.ip)
+		fmt.Println("Statements: ")
 
-		fmt.Print(" FD: ")
-		yellow.Print(fd_short)
-
-		fmt.Print(" AD: ")
-		yellow.Println(ad_short)
-
-		fmt.Print("Shape: ")
-		yellow.Print(instance.shape)
-
-		fmt.Print(" Mem: ")
-		yellow.Print(instance.mem)
-
-		fmt.Print(" vCPUs: ")
-		yellow.Println(instance.vCPUs)
-
-		fmt.Print("State: ")
-		yellow.Println(instance.state)
-
-		fmt.Print("Created: ")
-		yellow.Println(instance.cDate)
-
-		fmt.Print("Image ID: ")
-		yellow.Println(instance.imageId)
-
+		for _, statement := range policy.Statements {
+			faint.Println(statement)
+		}
 		fmt.Println("")
 	}
 }
 
-func fetchClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string) []Cluster {
-	var Clusters []Cluster
+func findPolicies(identityClient identity.IdentityClient, compartmentId string, flagPolicyFind string, flagPolicyFindStatement string, flagPolicyListNameOnly bool) {
+	// TODO: When matching on policy statement, it would probably make more sense to only return the statements with matches as opposed to return all statements
+	pattern_name := flagPolicyFind
+	pattern_statement := flagPolicyFindStatement
 
-	initialResponse, err := containerEngineClient.ListClusters(context.Background(), containerengine.ListClustersRequest{
-		CompartmentId: &compartmentId,
-		// LifecycleState: core.InstanceLifecycleStateRunning,
-	})
-	checkError(err)
+	policies := fetchPolicies(identityClient, compartmentId)
 
-	for _, cluster := range initialResponse.Items {
-		// fmt.Println(cluster)/
+	var matches []Policy
 
-		clusterId := *cluster.Id
-		clusterName := *cluster.Name
-		// clusterPrivateEndpoint := *cluster.Endpoints.PrivateEndpoint
+	// Handle simple wildcard
+	if pattern_name == "*" {
+		pattern_name = ".*"
+	}
 
-		clusterPrivateEndpointIp, clusterPrivateEndpointPort, found := strings.Cut(*cluster.Endpoints.PrivateEndpoint, ":")
-		// clusterPrivateEndpointPort := *cluster.Endpoints.PrivateEndpoint
+	if pattern_statement == "*" {
+		pattern_statement = ".*"
+	}
 
-		if found {
-			cluster := Cluster{clusterName, clusterId, clusterPrivateEndpointIp, clusterPrivateEndpointPort}
-			Clusters = append(Clusters, cluster)
+	if pattern_name != "" && pattern_statement == "" {
+		// Match on name
+		for _, policy := range policies {
+			match, _ := regexp.MatchString(pattern_name, policy.name)
+			if match {
+				matches = append(matches, policy)
+			}
+		}
+	} else if pattern_name == "" && pattern_statement != "" {
+		// Match on statement
+		for _, policy := range policies {
+			for _, statement := range policy.statements {
+				match, _ := regexp.MatchString(pattern_statement, statement)
+				if match {
+					if !policyContains(matches, policy) {
+						matches = append(matches, policy)
+					}
+				}
+			}
+		}
+	} else {
+		// Match on policy name, then search only those policies for matches in statements
+		var name_matches []Policy
+
+		for _, policy := range policies {
+			n_match, _ := regexp.MatchString(pattern_name, policy.name)
+			if n_match {
+				name_matches = append(name_matches, policy)
+			}
+		}
+
+		for _, policy := range name_matches {
+			for _, statement := range policy.statements {
+				s_match, _ := regexp.MatchString(pattern_statement, statement)
+
+				if s_match {
+					if !policyContains(matches, policy) {
+						matches = append(matches, policy)
+					}
+				}
+			}
 		}
 	}
 
-	return Clusters
+	if len(matches) > 0 {
+		matchCount := len(matches)
+		faint.Println(strconv.Itoa(matchCount) + " matches")
+
+		for _, policy := range matches {
+			if flagPolicyListNameOnly {
+				fmt.Println(policy.name)
+			} else {
+				fmt.Print("Name: ")
+				blue.Println(policy.name)
+
+				fmt.Print("ID: ")
+				yellow.Println(policy.id)
+
+				fmt.Println("Statements: ")
+				for _, statement := range policy.statements {
+					faint.Println(statement)
+				}
+
+				fmt.Println("")
+			}
+		}
+	}
 }
 
 func fetchSubnetIds(client core.VirtualNetworkClient, compartmentId string) []string {
@@ -856,29 +1118,6 @@ func listSubnets(client core.VirtualNetworkClient, compartmentId string) {
 	}
 
 	tbl.Print()
-}
-
-func fetchPrivateIp(client core.VirtualNetworkClient, vnicId string) string {
-	response, err := client.GetVnic(context.Background(), core.GetVnicRequest{VnicId: &vnicId})
-	checkError(err)
-
-	return *response.Vnic.PrivateIp
-}
-
-func fetchPrivateIps(client core.VirtualNetworkClient, compartmentId string) map[string]string {
-	vNicIdsToIps := make(map[string]string)
-	subnetIds := fetchSubnetIds(client, compartmentId)
-
-	for _, subnetId := range subnetIds {
-		response, err := client.ListPrivateIps(context.Background(), core.ListPrivateIpsRequest{SubnetId: &subnetId})
-		checkError(err)
-
-		for _, item := range response.Items {
-			vNicIdsToIps[*item.VnicId] = *item.IpAddress
-		}
-	}
-
-	return vNicIdsToIps
 }
 
 func checkBastionName(flagBastionName string) string {
@@ -1185,6 +1424,16 @@ func main() {
 	flagSubnetsList := subnetCmd.Bool("l", false, "List all subnets")
 	flagSubnetsFind := subnetCmd.String("f", "", "Find subnets by search pattern")
 
+	policyCmd := flag.NewFlagSet("policy", flag.ExitOnError)
+	flagPolicyList := policyCmd.Bool("l", false, "List all policies")
+	flagPolicyFind := policyCmd.String("f", "", "Find policies by name search pattern")
+	flagPolicyFindStatement := policyCmd.String("fs", "", "Find policy by statement search pattern")
+	flagPolicyListNameOnly := policyCmd.Bool("n", false, "Print only policy names (no statements)")
+
+	compartmentCmd := flag.NewFlagSet("compart", flag.ExitOnError)
+	flagCompartmentList := compartmentCmd.Bool("l", false, "List all compartments")
+	flagCompartmentFind := compartmentCmd.String("f", "", "Find compartments by search pattern")
+
 	// Extend flag's default usage function
 	flag.Usage = func() {
 		fmt.Println("OCI authentication:")
@@ -1242,7 +1491,7 @@ func main() {
 	}
 
 	// Configure OCI provider by profile
-	ociConfig := configureProvider()
+	ociConfig := setupOciConfig()
 
 	// identityClient is always required
 	// var identityClient identity.IdentityClient
@@ -1262,14 +1511,14 @@ func main() {
 			faintMagenta.Println("Tenancy: " + tenancyName)
 		}
 
-		listCompartmentNames(compartmentInfo)
+		listCompartmentNames(compartmentInfo, tenancyId, tenancyName)
 		os.Exit(0)
 	}
 
 	// <-- Anything beyond this point requires a compartment -->
 	// Attempt to get compartment name / ID from input then lookup compartment ID if necessary
 	// TODO: Document that name or ID can be used (vs. only name)
-	compartmentId, compartmentName := checkCompartmentInput(*flagCompartmentName, compartmentInfo, identityClient)
+	compartmentId, compartmentName := checkCompartmentInput(*flagCompartmentName, compartmentInfo, identityClient, tenancyId, tenancyName)
 
 	if showTenancyCompartment {
 		faintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartmentName + ")")
@@ -1317,6 +1566,31 @@ func main() {
 		} else if *flagSubnetsFind != "" {
 			fmt.Println("Subnet search is not yet enabled, listing all subnets. Use grep!")
 			listSubnets(vnetClient, compartmentId)
+		}
+		os.Exit(0)
+
+	case "policy":
+		policyCmd.Parse(os.Args[2:])
+
+		if *flagPolicyList {
+			listPolicies(identityClient, compartmentId)
+		} else if *flagPolicyFind != "" || *flagPolicyFindStatement != "" {
+			findPolicies(identityClient, compartmentId, *flagPolicyFind, *flagPolicyFindStatement, *flagPolicyListNameOnly)
+		}
+		os.Exit(0)
+
+	case "compart":
+		compartmentCmd.Parse(os.Args[2:])
+
+		if *flagCompartmentList {
+			if showTenancyCompartment {
+				faintMagenta.Println("Tenancy: " + tenancyName)
+			}
+
+			listCompartmentNames(compartmentInfo, tenancyId, tenancyName)
+		} else if *flagCompartmentFind != "" {
+			// fmt.Println("Compartment search is not yet enabled, listing all compartments. Use grep!")
+			findCompartments(tenancyId, identityClient, *flagCompartmentFind, compartmentInfo)
 		}
 		os.Exit(0)
 
@@ -1482,3 +1756,4 @@ func main() {
 }
 
 // TODO: Currently all networking functions include all VCNs without indicating which VNC an object belongs to. Need to support VNC ID flag and print VNC when flag not passed
+// TODO: Double check pagination on all fetch methods
