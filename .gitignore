@@ -26,5 +26,4 @@ go.work.sum
 
 downloads
 .DS_Store
-website/index.html
-website/downloads
+website/oshiv/index.html
