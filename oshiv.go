@@ -957,25 +957,28 @@ func fetchPolicies(identityClient identity.IdentityClient, compartmentId string)
 	return policies
 }
 
-func listPolicies(identityClient identity.IdentityClient, compartmentId string) {
-	// TODO: switch to use fetchPolicies
-	// TODO: support -n (print name only)
-	response, err := identityClient.ListPolicies(context.Background(), identity.ListPoliciesRequest{CompartmentId: &compartmentId})
-	checkError(err)
+func listPolicies(identityClient identity.IdentityClient, compartmentId string, flagPolicyListNameOnly bool) {
+	policies := fetchPolicies(identityClient, compartmentId)
 
-	for _, policy := range response.Items {
-		fmt.Print("Name: ")
-		blue.Println(*policy.Name)
+	faint.Println(strconv.Itoa(len(policies)) + " results")
 
-		fmt.Print("ID: ")
-		yellow.Println(*policy.Id)
+	for _, policy := range policies {
+		if flagPolicyListNameOnly {
+			fmt.Println(policy.name)
+		} else {
+			fmt.Print("Name: ")
+			blue.Println(policy.name)
 
-		fmt.Println("Statements: ")
+			fmt.Print("ID: ")
+			yellow.Println(policy.id)
 
-		for _, statement := range policy.Statements {
-			faint.Println(statement)
+			fmt.Println("Statements: ")
+
+			for _, statement := range policy.statements {
+				faint.Println(statement)
+			}
+			fmt.Println("")
 		}
-		fmt.Println("")
 	}
 }
 
@@ -1573,7 +1576,7 @@ func main() {
 		policyCmd.Parse(os.Args[2:])
 
 		if *flagPolicyList {
-			listPolicies(identityClient, compartmentId)
+			listPolicies(identityClient, compartmentId, *flagPolicyListNameOnly)
 		} else if *flagPolicyFind != "" || *flagPolicyFindStatement != "" {
 			findPolicies(identityClient, compartmentId, *flagPolicyFind, *flagPolicyFindStatement, *flagPolicyListNameOnly)
 		}
