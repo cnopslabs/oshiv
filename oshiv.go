@@ -104,7 +104,9 @@ type Policy struct {
 }
 
 // Adding this because there's no set object type, may be worth implementing my own
+// Checks if Policy object exists in Policy list by name
 func policyContains(policies []Policy, policy Policy) bool {
+
 	var policyExists bool
 
 	for _, existing_policy := range policies {
@@ -124,6 +126,8 @@ func checkError(err error) {
 	}
 }
 
+// Get home directory of user
+// Used for SSH keys and OCI configuration
 func homeDir() string {
 	homeDir, err := os.UserHomeDir()
 	checkError(err)
@@ -131,6 +135,7 @@ func homeDir() string {
 	return homeDir
 }
 
+// Configure the OCI configuration provider
 func setupOciConfig() common.ConfigurationProvider {
 	var config common.ConfigurationProvider
 
@@ -162,6 +167,7 @@ func parseSubcommand(firstArg string) string {
 	}
 }
 
+// All OCI API keys require a tenancy ID. Get ID and Verify it's valid
 func validateTenancyId(tenancyIdFlag string, client identity.IdentityClient, ociConfig common.ConfigurationProvider) (string, string) {
 	var tenancyId string
 	var err error
@@ -210,7 +216,18 @@ func validateTenancyId(tenancyIdFlag string, client identity.IdentityClient, oci
 	return tenancyId, tenancyName
 }
 
-func checkCompartmentInput(flagCompartmentName string, compartmentInfo map[string]string, identityClient identity.IdentityClient, tenancyId string, tenancyName string) (string, string) {
+// Lookup compartment name by ID (via OCI API call)
+func lookupCompartmentName(client identity.IdentityClient, compartmentId string) string {
+	response, err := client.GetCompartment(context.Background(), identity.GetCompartmentRequest{CompartmentId: &compartmentId})
+	checkError(err)
+
+	compartmentName := *response.Compartment.Name
+
+	return compartmentName
+}
+
+// Determine compartment name or ID, lookup name from ID if ID is given
+func checkCompartment(flagCompartmentName string, compartmentInfo map[string]string, identityClient identity.IdentityClient, tenancyId string, tenancyName string) (string, string) {
 	var compartmentName string
 	var exists bool
 	var compartmentId string
@@ -222,7 +239,6 @@ func checkCompartmentInput(flagCompartmentName string, compartmentInfo map[strin
 		// Compartment name is NOT set as env var, see if its passed in by the flag
 		if flagCompartmentName != "" {
 			// Compartment name is passed in by the flag, lookup ID
-			// TODO: This doesn't work for root compartment. Need to check of compartment name is root compartment (I.e. tenant)
 			compartmentId = lookupCompartmentId(compartmentInfo, flagCompartmentName)
 		} else {
 			// Compartment name is NOT passed, Let's secretly support some unofficial environment variables for compartment ID
@@ -232,19 +248,16 @@ func checkCompartmentInput(flagCompartmentName string, compartmentInfo map[strin
 				compartmentId, exists = os.LookupEnv("CID")
 
 				if !exists {
-					// fmt.Println("Must pass compartment name with -c or set with environment variable OCI_COMPARTMENT_NAME")
-					// os.Exit(1)
-
 					// No compartment name or ID passed, using the root compartment
 					fmt.Println("No compartment name or ID set, using root compartment.")
 					compartmentName = tenancyName
 					compartmentId = tenancyId
 
 				} else {
-					compartmentName = fetchCompartmentName(identityClient, compartmentId)
+					compartmentName = lookupCompartmentName(identityClient, compartmentId)
 				}
 			} else {
-				compartmentName = fetchCompartmentName(identityClient, compartmentId)
+				compartmentName = lookupCompartmentName(identityClient, compartmentId)
 			}
 		}
 
@@ -262,6 +275,7 @@ func checkCompartmentInput(flagCompartmentName string, compartmentInfo map[strin
 	return compartmentId, compartmentName
 }
 
+// Lookup compartment ID by name (via compartmentInfo)
 func lookupCompartmentId(compartmentInfo map[string]string, compartmentName string) string {
 	compartmentId := compartmentInfo[compartmentName]
 	if logLevel == "DEBUG" {
@@ -271,6 +285,7 @@ func lookupCompartmentId(compartmentInfo map[string]string, compartmentName stri
 	return compartmentId
 }
 
+// Fetch compartment info (names amd IDs) from OCI API
 func fetchCompartmentInfo(tenancyId string, client identity.IdentityClient) map[string]string {
 	response, err := client.ListCompartments(context.Background(), identity.ListCompartmentsRequest{CompartmentId: &tenancyId})
 	checkError(err)
@@ -284,16 +299,8 @@ func fetchCompartmentInfo(tenancyId string, client identity.IdentityClient) map[
 	return compartmentInfo
 }
 
-func fetchCompartmentName(client identity.IdentityClient, compartmentId string) string {
-	response, err := client.GetCompartment(context.Background(), identity.GetCompartmentRequest{CompartmentId: &compartmentId})
-	checkError(err)
-
-	compartmentName := *response.Compartment.Name
-
-	return compartmentName
-}
-
-func listCompartmentNames(compartmentInfo map[string]string, tenancyId string, tenancyName string) {
+// List and print compartments (OCI API call)
+func listCompartments(compartmentInfo map[string]string, tenancyId string, tenancyName string) {
 	tbl := table.New("Compartment Name", "OCID")
 	tbl.WithHeaderFormatter(headerFmt).WithFirstColumnFormatter(columnFmt)
 
@@ -316,6 +323,7 @@ func listCompartmentNames(compartmentInfo map[string]string, tenancyId string, t
 	yellow.Println("   export OCI_COMPARTMENT_NAME=")
 }
 
+// Find and print compartments (OCI API call)
 func findCompartments(tenancyId string, identityClient identity.IdentityClient, flagCompartmentFind string, compartmentInfo map[string]string) {
 	pattern := flagCompartmentFind
 
@@ -353,6 +361,7 @@ func findCompartments(tenancyId string, identityClient identity.IdentityClient, 
 	yellow.Println("   export OCI_COMPARTMENT_NAME=")
 }
 
+// Fetch image object by ID via OCI API call
 func fetchImage(computeClient core.ComputeClient, imageId string) Image {
 	var image Image
 
@@ -371,6 +380,7 @@ func fetchImage(computeClient core.ComputeClient, imageId string) Image {
 	return image
 }
 
+// Fetch all images via OCI API call
 func fetchImages(computeClient core.ComputeClient, compartmentId string) []Image {
 	var images []Image
 	var pageCount int
@@ -428,12 +438,11 @@ func fetchImages(computeClient core.ComputeClient, compartmentId string) []Image
 			}
 		}
 	}
-	// Todo: remove after verifying pagination is working correctly
-	fmt.Println(strconv.Itoa(pageCount) + "pages")
 
 	return images
 }
 
+// List and print images (OCI API call)
 func listImages(computeClient core.ComputeClient, compartmentId string) {
 	images := fetchImages(computeClient, compartmentId)
 
@@ -462,6 +471,8 @@ func listImages(computeClient core.ComputeClient, compartmentId string) {
 	fmt.Println(strconv.Itoa(len(images)) + " images found")
 }
 
+// Fetch all VNIC attachments via OCI API call
+// This is used to determine instance private IP
 func fetchVnicAttachments(client core.ComputeClient, compartmentId string) map[string]string {
 	attachments := make(map[string]string)
 
@@ -493,6 +504,7 @@ func fetchVnicAttachments(client core.ComputeClient, compartmentId string) map[s
 	return attachments
 }
 
+// Fetch private IP from VNIC (OCI API call)
 func fetchPrivateIp(client core.VirtualNetworkClient, vnicId string) string {
 	response, err := client.GetVnic(context.Background(), core.GetVnicRequest{VnicId: &vnicId})
 	checkError(err)
@@ -500,6 +512,7 @@ func fetchPrivateIp(client core.VirtualNetworkClient, vnicId string) string {
 	return *response.Vnic.PrivateIp
 }
 
+// Fetch all private IPs via OCI API call
 func fetchPrivateIps(client core.VirtualNetworkClient, compartmentId string) map[string]string {
 	vNicIdsToIps := make(map[string]string)
 	subnetIds := fetchSubnetIds(client, compartmentId)
@@ -516,6 +529,7 @@ func fetchPrivateIps(client core.VirtualNetworkClient, compartmentId string) map
 	return vNicIdsToIps
 }
 
+// Fetch all instances via OCI API call
 func fetchInstances(computeClient core.ComputeClient, compartmentId string) []Instance {
 	var instances []Instance
 
@@ -590,6 +604,7 @@ func fetchInstances(computeClient core.ComputeClient, compartmentId string) []In
 	return instances
 }
 
+// List and print instances (OCI API call)
 func listInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) {
 	instances := fetchInstances(computeClient, compartmentId)
 	// returns []Instance
@@ -640,6 +655,7 @@ func listInstances(computeClient core.ComputeClient, compartmentId string, vnetC
 	}
 }
 
+// Match pattern and return instance matches
 func matchInstances(pattern string, instances []Instance) []Instance {
 	// TODO: Maybe move this back to findInstances for consistency
 	var matches []Instance
@@ -666,6 +682,7 @@ func matchInstances(pattern string, instances []Instance) []Instance {
 	return matches
 }
 
+// Find and print instances (OCI API call)
 func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetworkClient, compartmentId string, flagSearchString string, retrieveImageInfo bool) {
 	pattern := flagSearchString
 
@@ -829,6 +846,7 @@ func findInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 	}
 }
 
+// Fetch all clusters via OCI API call
 func fetchClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string) []Cluster {
 	// TODO: pagination
 	var Clusters []Cluster
@@ -858,6 +876,7 @@ func fetchClusters(containerEngineClient containerengine.ContainerEngineClient, 
 	return Clusters
 }
 
+// Match pattern and return cluster matches
 func matchClusters(pattern string, clusters []Cluster) []Cluster {
 	var matches []Cluster
 
@@ -883,6 +902,7 @@ func matchClusters(pattern string, clusters []Cluster) []Cluster {
 	return matches
 }
 
+// Find and print k8s clusters (OCI API call)
 func findClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string, flagSearchString string) {
 	pattern := flagSearchString
 	clusters := fetchClusters(containerEngineClient, compartmentId)
@@ -904,6 +924,7 @@ func findClusters(containerEngineClient containerengine.ContainerEngineClient, c
 	}
 }
 
+// Fetch all policies via OCI API call
 func fetchPolicies(identityClient identity.IdentityClient, compartmentId string) []Policy {
 	var policies []Policy
 	var pageCount int
@@ -957,6 +978,7 @@ func fetchPolicies(identityClient identity.IdentityClient, compartmentId string)
 	return policies
 }
 
+// List and print policies (OCI API call)
 func listPolicies(identityClient identity.IdentityClient, compartmentId string, flagPolicyListNameOnly bool) {
 	policies := fetchPolicies(identityClient, compartmentId)
 
@@ -982,6 +1004,7 @@ func listPolicies(identityClient identity.IdentityClient, compartmentId string, 
 	}
 }
 
+// Find and print policies (OCI API call)
 func findPolicies(identityClient identity.IdentityClient, compartmentId string, flagPolicyFind string, flagPolicyFindStatement string, flagPolicyListNameOnly bool) {
 	// TODO: When matching on policy statement, it would probably make more sense to only return the statements with matches as opposed to return all statements
 	pattern_name := flagPolicyFind
@@ -1069,6 +1092,7 @@ func findPolicies(identityClient identity.IdentityClient, compartmentId string, 
 	}
 }
 
+// Fetch all subnet IDs via OCI API call
 func fetchSubnetIds(client core.VirtualNetworkClient, compartmentId string) []string {
 	response, err := client.ListSubnets(context.Background(), core.ListSubnetsRequest{CompartmentId: &compartmentId})
 	checkError(err)
@@ -1082,6 +1106,7 @@ func fetchSubnetIds(client core.VirtualNetworkClient, compartmentId string) []st
 	return subnetIds
 }
 
+// List and print subnets (OCI API call)
 func listSubnets(client core.VirtualNetworkClient, compartmentId string) {
 	response, err := client.ListSubnets(context.Background(), core.ListSubnetsRequest{CompartmentId: &compartmentId})
 	checkError(err)
@@ -1123,6 +1148,7 @@ func listSubnets(client core.VirtualNetworkClient, compartmentId string) {
 	tbl.Print()
 }
 
+// Determine bastion name from input (flag vs env var)
 func checkBastionName(flagBastionName string) string {
 	var bastionName string
 	bastionNameEnv, exists := os.LookupEnv("OCI_BASTION_NAME")
@@ -1141,6 +1167,7 @@ func checkBastionName(flagBastionName string) string {
 	return bastionName
 }
 
+// Fetch all bastions via OCI API call
 func fetchBastions(compartmentId string, client bastion.BastionClient) map[string]string {
 	response, err := client.ListBastions(context.Background(), bastion.ListBastionsRequest{CompartmentId: &compartmentId})
 	checkError(err)
@@ -1154,6 +1181,8 @@ func fetchBastions(compartmentId string, client bastion.BastionClient) map[strin
 	return bastionInfo
 }
 
+// Fetch bastion object by ID via OCI API call
+// TODO: This is not currently used
 func fetchBastion(bastionName string, bastionId string, client bastion.BastionClient) {
 	if logLevel == "DEBUG" {
 		fmt.Println("\nGetting bastion for: " + bastionName + " (" + bastionId + ")")
@@ -1163,6 +1192,7 @@ func fetchBastion(bastionName string, bastionId string, client bastion.BastionCl
 	checkError(err)
 }
 
+// List and print bastions (OCI API call)
 func listBastions(bastionInfo map[string]string) {
 	tbl := table.New("Bastion Name", "OCID")
 	tbl.WithHeaderFormatter(headerFmt).WithFirstColumnFormatter(columnFmt)
@@ -1179,6 +1209,7 @@ func listBastions(bastionInfo map[string]string) {
 	yellow.Println("   export OCI_BASTION_NAME=")
 }
 
+// Read SSH public key from file
 func readSshPubKey(sshPrivateKeyFileLocation string) string {
 	if sshPrivateKeyFileLocation == "" {
 		sshPrivateKeyFileLocation = homeDir() + "/.ssh/id_rsa"
@@ -1191,6 +1222,7 @@ func readSshPubKey(sshPrivateKeyFileLocation string) string {
 	return string(sshKeyContents)
 }
 
+// Create a manages SSH bastion session
 func createManagedSshSession(bastionId string, client bastion.BastionClient, targetInstance string, targetIp string, publicKeyContent string, sshUser string, sshPort int, sessionTtl int) *string {
 	req := bastion.CreateSessionRequest{
 		CreateSessionDetails: bastion.CreateSessionDetails{
@@ -1224,6 +1256,7 @@ func createManagedSshSession(bastionId string, client bastion.BastionClient, tar
 	return sessionId
 }
 
+// Create a port forward SSH bastion session
 func createPortFwSession(bastionId string, client bastion.BastionClient, targetIp string, publicKeyContent string, sshTunnelPort int, sessionTtl int) *string {
 	req := bastion.CreateSessionRequest{
 		CreateSessionDetails: bastion.CreateSessionDetails{
@@ -1255,6 +1288,7 @@ func createPortFwSession(bastionId string, client bastion.BastionClient, targetI
 	return sessionId
 }
 
+// Check status of bastion session
 func checkSession(client bastion.BastionClient, sessionId *string, flagCreatePortFwSession bool) SessionInfo {
 	response, err := client.GetSession(context.Background(), bastion.GetSessionRequest{SessionId: sessionId})
 	checkError(err)
@@ -1293,6 +1327,7 @@ func checkSession(client bastion.BastionClient, sessionId *string, flagCreatePor
 	return currentSessionInfo
 }
 
+// List and print all active bastion sessions
 func listActiveSessions(client bastion.BastionClient, bastionId string) {
 	response, err := client.ListSessions(context.Background(), bastion.ListSessionsRequest{BastionId: &bastionId})
 	checkError(err)
@@ -1316,6 +1351,7 @@ func listActiveSessions(client bastion.BastionClient, bastionId string) {
 	}
 }
 
+// Print SSH commands to connect via bastion
 func printSshCommands(client bastion.BastionClient, sessionId *string, instanceIp *string, sshUser *string, sshPort *int, sshIdentityFile string, tunnelPort int, localPort *int) {
 	bastionEndpointUrl, err := url.Parse(client.Endpoint())
 	checkError(err)
@@ -1355,6 +1391,7 @@ func printSshCommands(client bastion.BastionClient, sessionId *string, instanceI
 	fmt.Println("-P " + strconv.Itoa(*sshPort) + " " + *sshUser + "@" + *instanceIp)
 }
 
+// Print port forward SSH commands to connect via bastion
 func printPortFwSshCommands(client bastion.BastionClient, sessionId *string, targetIp *string, sshPort *int, sshIdentityFile string, tunnelPort int, localTunnelPort int, flagOkeClusterId *string) {
 	bastionEndpointUrl, err := url.Parse(client.Endpoint())
 	checkError(err)
@@ -1514,14 +1551,14 @@ func main() {
 			faintMagenta.Println("Tenancy: " + tenancyName)
 		}
 
-		listCompartmentNames(compartmentInfo, tenancyId, tenancyName)
+		listCompartments(compartmentInfo, tenancyId, tenancyName)
 		os.Exit(0)
 	}
 
 	// <-- Anything beyond this point requires a compartment -->
 	// Attempt to get compartment name / ID from input then lookup compartment ID if necessary
 	// TODO: Document that name or ID can be used (vs. only name)
-	compartmentId, compartmentName := checkCompartmentInput(*flagCompartmentName, compartmentInfo, identityClient, tenancyId, tenancyName)
+	compartmentId, compartmentName := checkCompartment(*flagCompartmentName, compartmentInfo, identityClient, tenancyId, tenancyName)
 
 	if showTenancyCompartment {
 		faintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartmentName + ")")
@@ -1590,7 +1627,7 @@ func main() {
 				faintMagenta.Println("Tenancy: " + tenancyName)
 			}
 
-			listCompartmentNames(compartmentInfo, tenancyId, tenancyName)
+			listCompartments(compartmentInfo, tenancyId, tenancyName)
 		} else if *flagCompartmentFind != "" {
 			// fmt.Println("Compartment search is not yet enabled, listing all compartments. Use grep!")
 			findCompartments(tenancyId, identityClient, *flagCompartmentFind, compartmentInfo)
@@ -1667,6 +1704,7 @@ func main() {
 			bastionId = bastionInfo[bastionName]
 		}
 
+		// TODO: This is not currently used
 		fetchBastion(bastionName, bastionId, bastionClient)
 
 		if *flagListSessions {
@@ -1759,4 +1797,3 @@ func main() {
 }
 
 // TODO: Currently all networking functions include all VCNs without indicating which VNC an object belongs to. Need to support VNC ID flag and print VNC when flag not passed
-// TODO: Double check pagination on all fetch methods
