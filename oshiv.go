@@ -1797,3 +1797,5 @@ func main() {
 }
 
 // TODO: Currently all networking functions include all VCNs without indicating which VNC an object belongs to. Need to support VNC ID flag and print VNC when flag not passed
+// TODO: There appears to be an issue with `oshiv compart -f` when searching for the root compartment
+//       E.g. oshiv compart -f cernprodsharedsvc1oc
