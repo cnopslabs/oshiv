@@ -1,5 +1,5 @@
 # OCI Shiv
-A tool for finding OCI instances and OKE Kubernetes clusters and then connecting to them via the OCI bastion service.
+A tool for quickly finding OCI resources and connecting to instances and OKE clusters.
 
 ## Quick examples
 
@@ -434,3 +434,8 @@ example
 ```
 sudo xattr -d com.apple.quarantine ~/.local/bin/oshiv
 ```
+
+## Reference
+
+https://docs.oracle.com/en-us/iaas/tools/go/65.78.0/
+

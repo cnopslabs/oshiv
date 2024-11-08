@@ -1,7 +1,3 @@
-/*
-Copyright © 2024 NAME HERE <EMAIL ADDRESS>
-
-*/
 package cmd
 
 import (
@@ -10,18 +6,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-
-
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "oshiv",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "A tool for finding and connecting to OCI resources",
+	Long:  "A tool for finding OCI resources and for connecting to instances and OKE clusters via the OCI bastion service.",
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
@@ -43,9 +32,13 @@ func init() {
 
 	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.oshiv.yaml)")
 
+	// We need a way to override the default tenancy that we use to authenticate against
+	// One way to do that is to provide a flag for Tenancy ID
+	var FlagTenancyIdOverride string
+	rootCmd.PersistentFlags().StringVarP(&FlagTenancyIdOverride, "tenancy-id-override", "t", "", "Override's the default tenancy with this tenancy ID")
+	// rootCmd.MarkFlagRequired("tenancy-id")
+
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
-
-
