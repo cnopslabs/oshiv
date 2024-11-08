@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/cnopslabs/oshiv/utils"
+	"github.com/cnopslabs/oshiv/internal/utils"
 	"github.com/oracle/oci-go-sdk/common"
 	"github.com/oracle/oci-go-sdk/identity"
 )

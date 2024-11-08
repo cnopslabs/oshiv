@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/cnopslabs/oshiv/utils"
+	"github.com/cnopslabs/oshiv/internal/utils"
 	"github.com/oracle/oci-go-sdk/identity"
 	"github.com/rodaine/table"
 )
