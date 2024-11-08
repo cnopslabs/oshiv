@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/cnopslabs/oshiv/resources"
-	"github.com/cnopslabs/oshiv/utils"
+	"github.com/cnopslabs/oshiv/internal/resources"
+	"github.com/cnopslabs/oshiv/internal/utils"
 	"github.com/oracle/oci-go-sdk/identity"
 	"github.com/spf13/cobra"
 )
