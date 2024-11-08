@@ -47,9 +47,8 @@ func ListCompartments(compartments map[string]string, tenancyId string, tenancyN
 	utils.FaintMagenta.Println("Tenancy: " + tenancyName)
 	tbl.Print()
 
-	// Provide example to have oshiv use env var for setting compartment
-	fmt.Println("\nTo set compartment, export OCI_COMPARTMENT_NAME:")
-	utils.Yellow.Println("   export OCI_COMPARTMENT_NAME=")
+	fmt.Println("\nTo set compartment, run:")
+	utils.Yellow.Println("   oshiv compartment -s COMPARTMENT_NAME")
 }
 
 func FindCompartments(tenancyId string, tenancyName string, identityClient identity.IdentityClient, namePattern string) {
@@ -82,6 +81,10 @@ func FindCompartments(tenancyId string, tenancyName string, identityClient ident
 	utils.FaintMagenta.Println("Tenancy: " + tenancyName)
 	tbl.Print()
 
-	fmt.Println("\nTo set compartment, export OCI_COMPARTMENT_NAME:")
-	utils.Yellow.Println("   export OCI_COMPARTMENT_NAME=")
+	fmt.Println("\nTo set compartment, run:")
+	utils.Yellow.Println("   oshiv compartment -s COMPARTMENT_NAME")
+}
+
+func SetCompartmentName(compartmentName string) {
+	utils.SetConfigString("compartment", compartmentName)
 }

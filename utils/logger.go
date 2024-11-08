@@ -7,7 +7,7 @@ import (
 
 var Logger *slog.Logger
 
-func init() {
+func loggerInit() {
 	lvl := new(slog.LevelVar)
 	lvl.Set(slog.LevelInfo)
 

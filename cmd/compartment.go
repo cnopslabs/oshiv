@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/cnopslabs/oshiv/resources"
 	"github.com/cnopslabs/oshiv/utils"
 	"github.com/oracle/oci-go-sdk/identity"
@@ -23,14 +25,33 @@ var compartmentCmd = &cobra.Command{
 		compartments := resources.FetchCompartments(tenancyId, identityClient)
 
 		flagList, _ := cmd.Flags().GetBool("list")
+		flagFind, _ := cmd.Flags().GetString("find")
+		flagSetCompartment, _ := cmd.Flags().GetString("set-compartment")
+
 		if flagList {
 			resources.ListCompartments(compartments, tenancyId, tenancyName)
+		} else if flagFind != "" {
+			resources.FindCompartments(tenancyId, tenancyName, identityClient, flagFind)
+		} else if flagSetCompartment != "" {
+			resources.SetCompartmentName(flagSetCompartment)
+		} else {
+			fmt.Println("Invalid sub-command or flag")
 		}
 
-		flagFind, _ := cmd.Flags().GetString("find")
-		if flagFind != "" {
-			resources.FindCompartments(tenancyId, tenancyName, identityClient, flagFind)
-		}
+		// flagList, _ := cmd.Flags().GetBool("list")
+		// if flagList {
+		// 	resources.ListCompartments(compartments, tenancyId, tenancyName)
+		// }
+
+		// flagFind, _ := cmd.Flags().GetString("find")
+		// if flagFind != "" {
+		// 	resources.FindCompartments(tenancyId, tenancyName, identityClient, flagFind)
+		// }
+
+		// flagSetCompartment, _ := cmd.Flags().GetString("set-compartment")
+		// if flagSetCompartment != "" {
+		// 	resources.SetCompartmentName(flagSetCompartment)
+		// }
 	},
 }
 
@@ -46,4 +67,5 @@ func init() {
 	// is called directly, e.g.:
 	compartmentCmd.Flags().BoolP("list", "l", false, "List all compartments")
 	compartmentCmd.Flags().StringP("find", "f", "", "Find compartment by name pattern search")
+	compartmentCmd.Flags().StringP("set-compartment", "s", "", "Set compartment name")
 }
