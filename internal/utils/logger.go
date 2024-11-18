@@ -7,7 +7,9 @@ import (
 
 var Logger *slog.Logger
 
-func loggerInit() {
+// Note: Logger will most likely need to initialize first, if other utils.inits
+// are created, will need to handle initialization order elsewhere
+func init() {
 	lvl := new(slog.LevelVar)
 	lvl.Set(slog.LevelInfo)
 

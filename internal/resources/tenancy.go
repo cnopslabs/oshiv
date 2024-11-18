@@ -2,36 +2,30 @@ package resources
 
 import (
 	"context"
-	"os"
 
 	"github.com/cnopslabs/oshiv/internal/utils"
-	"github.com/oracle/oci-go-sdk/common"
-	"github.com/oracle/oci-go-sdk/identity"
+	"github.com/oracle/oci-go-sdk/v65/common"
+	"github.com/oracle/oci-go-sdk/v65/identity"
+	"github.com/spf13/viper"
 )
 
 // Determine tenancy ID, validate it against the OCI API, and get tenancy name
-func ValidateTenancyId(flagTenancyIdOverride string, client identity.IdentityClient, ociConfig common.ConfigurationProvider) (string, string) {
-	var tenancyId string
+func ValidateTenancyId(client identity.IdentityClient, ociConfig common.ConfigurationProvider) (string, string) {
+	// Check for tenancy overrides
+	// Viper uses the following order precedence: 1) flag, 2) env var, 3) config file, 4) key/value store, 4) default
+	// For tenancy-id, we are currently only supporting 1, 2, and 4
+	// If tenancy ID flag was passed, this has already been added to config as flag
 
-	// Get default tenancy ID from OCI config
-	defaultTenancyId, err := ociConfig.TenancyOCID()
+	// Get tenancy ID from OCI config and set as the default (lowest precedence order) in viper config
+	ociConfigTenancyId, err := ociConfig.TenancyOCID()
 	utils.CheckError(err)
+	viper.SetDefault("tenancy-id", ociConfigTenancyId)
 
 	// Attempt to get tenancy ID from environment variable
-	envTenancyIdOverride, envTenancyIdOverrideExists := os.LookupEnv("OCI_CLI_TENANCY")
+	viper.BindEnv("tenancy-id", "OCI_CLI_TENANCY")
 
-	// We need a way to override the default tenancy we use to authenticate against. Default tenancy can be overridden by flag or env var
-	// Precedence: 1) CLI flag, 2) Environment variable, 3) Default (OCI config file)
-	if flagTenancyIdOverride != "" {
-		tenancyId = flagTenancyIdOverride
-		utils.Logger.Debug("Tenancy ID is set via flag to: " + tenancyId)
-	} else if envTenancyIdOverrideExists {
-		tenancyId = envTenancyIdOverride
-		utils.Logger.Debug("Tenancy ID is set via OCI_CLI_TENANCY environment variable to: " + tenancyId)
-	} else {
-		tenancyId = defaultTenancyId
-		utils.Logger.Debug("Tenancy ID is set via OCI config file to: " + tenancyId)
-	}
+	// Get tenancy ID from viper config
+	tenancyId := viper.GetString("tenancy-id")
 
 	// Validate tenancy ID and get tenancy name
 	response, err := client.GetTenancy(context.Background(), identity.GetTenancyRequest{TenancyId: &tenancyId})
