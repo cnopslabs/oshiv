@@ -3,7 +3,9 @@ package cmd
 import (
 	"os"
 
+	"github.com/cnopslabs/oshiv/internal/utils"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -11,34 +13,46 @@ var rootCmd = &cobra.Command{
 	Use:   "oshiv",
 	Short: "A tool for finding and connecting to OCI resources",
 	Long:  "A tool for finding OCI resources and for connecting to instances and OKE clusters via the OCI bastion service.",
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
+	// Run:   func(cmd *cobra.Command, args []string) {}, // TODO: Maybe add version here
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	// We need to initialize the config file prior to executing any child commands
+	flagConfigFilePath, _ := rootCmd.Flags().GetString("config")
+	utils.ConfigInit(flagConfigFilePath)
+
+	// Execute adds all child commands to the root command and sets flags appropriately.
+	// This is called by main.main(). It only needs to happen once to the rootCmd.
 	err := rootCmd.Execute()
 	if err != nil {
 		os.Exit(1)
 	}
+
+	// Only add tenancy ID to config if its passed in
+	flagTenancyId, _ := rootCmd.Flags().GetString("tenancy-id")
+	if flagTenancyId != "" {
+		viper.BindPFlag("tenancy-id", rootCmd.Flags().Lookup("tenancy-id"))
+	}
+
+	// Only add compartment name to config if its passed in
+	flagCompartmentName, _ := rootCmd.Flags().GetString("compartment-name")
+	if flagCompartmentName != "" {
+		viper.BindPFlag("compartment-name", rootCmd.Flags().Lookup("compartment-name"))
+	}
 }
 
 func init() {
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
+	// Config file is required by all OCI API resource functions except compartment list
+	var flagConfigFilePath string
+	rootCmd.PersistentFlags().StringVarP(&flagConfigFilePath, "config", "i", "", "config file (default is $HOME/.oshiv.yaml)")
 
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.oshiv.yaml)")
-
-	// We need a way to override the default tenancy that we use to authenticate against
+	// We need a way to override the default tenancy that may be used to authenticate against
 	// One way to do that is to provide a flag for Tenancy ID
-	var FlagTenancyIdOverride string
-	rootCmd.PersistentFlags().StringVarP(&FlagTenancyIdOverride, "tenancy-id-override", "t", "", "Override's the default tenancy with this tenancy ID")
-	// rootCmd.MarkFlagRequired("tenancy-id")
+	// Tenancy ID (default or override) is required by all OCI API resources
+	var flagTenancyId string
+	rootCmd.PersistentFlags().StringVarP(&flagTenancyId, "tenancy-id", "t", "", "Override's the default tenancy with this tenancy ID")
 
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// Compartment is required by all OCI API resource functions except compartment list
+	var flagCompartmentName string
+	rootCmd.PersistentFlags().StringVarP(&flagCompartmentName, "compartment-name", "c", "", "The name of the compartment to use")
 }
