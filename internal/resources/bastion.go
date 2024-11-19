@@ -14,22 +14,22 @@ func FetchBastions(compartmentId string, client bastion.BastionClient) map[strin
 	response, err := client.ListBastions(context.Background(), bastion.ListBastionsRequest{CompartmentId: &compartmentId})
 	utils.CheckError(err)
 
-	bastionInfo := make(map[string]string)
+	bastions := make(map[string]string)
 
 	for _, item := range response.Items {
-		bastionInfo[*item.Name] = *item.Id
+		bastions[*item.Name] = *item.Id
 	}
 
-	return bastionInfo
+	return bastions
 }
 
 // List and print bastions (OCI API call)
-func ListBastions(bastionInfo map[string]string) {
+func ListBastions(bastions map[string]string) {
 	tbl := table.New("Bastion Name", "OCID")
 	tbl.WithHeaderFormatter(utils.HeaderFmt).WithFirstColumnFormatter(utils.ColumnFmt)
 
-	for bastionName := range bastionInfo {
-		tbl.AddRow(bastionName, bastionInfo[bastionName])
+	for bastionName := range bastions {
+		tbl.AddRow(bastionName, bastions[bastionName])
 	}
 
 	tbl.Print()
@@ -39,13 +39,13 @@ func ListBastions(bastionInfo map[string]string) {
 }
 
 // Determine bastion name and then lookup ID
-func CheckForUniqueBastion(bastionInfo map[string]string) string {
+func CheckForUniqueBastion(bastions map[string]string) string {
 	var bastionId string
 	var bastionName string
 
 	// If there is only one bastion, no need to require bastion name input
-	if len(bastionInfo) == 1 {
-		for name, id := range bastionInfo {
+	if len(bastions) == 1 {
+		for name, id := range bastions {
 			bastionName = name
 			bastionId = id
 		}
