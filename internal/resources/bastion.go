@@ -34,8 +34,8 @@ func ListBastions(bastionInfo map[string]string) {
 
 	tbl.Print()
 
-	fmt.Println("\nTo set bastion name, export OCI_BASTION_NAME:")
-	utils.Yellow.Println("   export OCI_BASTION_NAME=")
+	fmt.Println("\nTo set bastion name, run:")
+	utils.Yellow.Println("   oshiv bastion -s BASTION_NAME")
 }
 
 // Determine bastion name and then lookup ID
