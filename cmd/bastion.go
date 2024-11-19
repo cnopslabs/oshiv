@@ -25,12 +25,12 @@ var bastionCmd = &cobra.Command{
 		bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(err)
 
-		bastionInfo := resources.FetchBastions(compartmentId, bastionClient)
+		bastions := resources.FetchBastions(compartmentId, bastionClient)
 
 		flagList, _ := cmd.Flags().GetBool("list")
 
 		if flagList {
-			resources.ListBastions(bastionInfo)
+			resources.ListBastions(bastions)
 		}
 	},
 }
