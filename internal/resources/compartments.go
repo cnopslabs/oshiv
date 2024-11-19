@@ -104,6 +104,7 @@ func lookupCompartmentId(compartments map[string]string, compartmentName string)
 func DetermineCompartment(compartments map[string]string, identityClient identity.IdentityClient, tenancyId string, tenancyName string) (string, string) {
 	var compartmentId string
 
+	// TODO: Should we move the setting of Viper config up into the cmd package?
 	// Viper uses the following order precedence: 1) flag, 2) env var, 3) config file, 4) key/value store, 4) default
 	// For compartment-name , we are currently only supporting 1 and 4 as there is no OCI CLI convention for env var
 	// If compartment name flag was passed, this has already been added to config as flag

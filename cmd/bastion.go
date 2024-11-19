@@ -1,34 +1,43 @@
-/*
-Copyright © 2024 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
-	"fmt"
-
+	"github.com/cnopslabs/oshiv/internal/resources"
+	"github.com/cnopslabs/oshiv/internal/utils"
+	"github.com/oracle/oci-go-sdk/v65/bastion"
+	"github.com/oracle/oci-go-sdk/v65/identity"
 	"github.com/spf13/cobra"
 )
 
-// bastionCmd represents the bastion command
 var bastionCmd = &cobra.Command{
 	Use:   "bastion",
 	Short: "Find, list, and connect via the OCI bastion service",
 	Long:  "TODO",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("bastion called")
+		ociConfig := utils.SetupOciConfig()
+
+		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
+		utils.CheckError(identityErr)
+
+		tenancyId, tenancyName := resources.ValidateTenancyId(identityClient, ociConfig)
+		compartments := resources.FetchCompartments(tenancyId, identityClient)
+		compartmentId, _ := resources.DetermineCompartment(compartments, identityClient, tenancyId, tenancyName)
+
+		bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(ociConfig)
+		utils.CheckError(err)
+
+		bastionInfo := resources.FetchBastions(compartmentId, bastionClient)
+
+		flagList, _ := cmd.Flags().GetBool("list")
+
+		if flagList {
+			resources.ListBastions(bastionInfo)
+		}
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(bastionCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// bastionCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// bastionCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// Local flags only exposed to oke command
+	bastionCmd.Flags().BoolP("list", "l", false, "List all bastions")
 }
