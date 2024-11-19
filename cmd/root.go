@@ -13,7 +13,7 @@ var rootCmd = &cobra.Command{
 	Use:   "oshiv",
 	Short: "A tool for finding and connecting to OCI resources",
 	Long:  "A tool for finding OCI resources and for connecting to instances and OKE clusters via the OCI bastion service.",
-	// Run:   func(cmd *cobra.Command, args []string) {}, // TODO: Maybe add version here
+	Run:   func(cmd *cobra.Command, args []string) {}, // TODO: Maybe add version here
 }
 
 func Execute() {

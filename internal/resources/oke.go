@@ -20,28 +20,45 @@ type Cluster struct {
 
 // Fetch all clusters via OCI API call
 func fetchClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string) []Cluster {
-	// TODO: pagination
 	var clusters []Cluster
 
-	initialResponse, err := containerEngineClient.ListClusters(context.Background(), containerengine.ListClustersRequest{
-		CompartmentId: &compartmentId,
-		// LifecycleState: core.InstanceLifecycleStateRunning,
-	})
+	initialResponse, err := containerEngineClient.ListClusters(context.Background(), containerengine.ListClustersRequest{CompartmentId: &compartmentId})
 	utils.CheckError(err)
 
 	for _, cluster := range initialResponse.Items {
-		// fmt.Println(cluster)/
-
 		clusterId := *cluster.Id
 		clusterName := *cluster.Name
-		// clusterPrivateEndpoint := *cluster.Endpoints.PrivateEndpoint
 
 		clusterPrivateEndpointIp, clusterPrivateEndpointPort, found := strings.Cut(*cluster.Endpoints.PrivateEndpoint, ":")
-		// clusterPrivateEndpointPort := *cluster.Endpoints.PrivateEndpoint
-
 		if found {
 			cluster := Cluster{clusterName, clusterId, clusterPrivateEndpointIp, clusterPrivateEndpointPort}
 			clusters = append(clusters, cluster)
+		}
+	}
+
+	if initialResponse.OpcNextPage != nil {
+		nextPage := initialResponse.OpcNextPage
+
+		for {
+			response, err := containerEngineClient.ListClusters(context.Background(), containerengine.ListClustersRequest{CompartmentId: &compartmentId, Page: nextPage})
+			utils.CheckError(err)
+
+			for _, cluster := range response.Items {
+				clusterId := *cluster.Id
+				clusterName := *cluster.Name
+
+				clusterPrivateEndpointIp, clusterPrivateEndpointPort, found := strings.Cut(*cluster.Endpoints.PrivateEndpoint, ":")
+				if found {
+					cluster := Cluster{clusterName, clusterId, clusterPrivateEndpointIp, clusterPrivateEndpointPort}
+					clusters = append(clusters, cluster)
+				}
+			}
+
+			if response.OpcNextPage != nil {
+				nextPage = response.OpcNextPage
+			} else {
+				break
+			}
 		}
 	}
 
@@ -67,7 +84,7 @@ func matchClusters(pattern string, clusters []Cluster) []Cluster {
 	return matches
 }
 
-// Find and print k8s clusters
+// Find and print clusters
 func FindClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string, searchString string) {
 	var clusterMatches []Cluster
 	clusters := fetchClusters(containerEngineClient, compartmentId)
