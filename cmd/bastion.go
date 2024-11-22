@@ -6,6 +6,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/bastion"
 	"github.com/oracle/oci-go-sdk/v65/identity"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var bastionCmd = &cobra.Command{
@@ -13,14 +14,22 @@ var bastionCmd = &cobra.Command{
 	Short: "Find, list, and connect via the OCI bastion service",
 	Long:  "TODO",
 	Run: func(cmd *cobra.Command, args []string) {
-		ociConfig := utils.SetupOciConfig()
+		// Lookup tenancy ID and compartment flags and add to Viper config if passed
+		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
+		FlagCompartment := rootCmd.Flags().Lookup("compartment")
+		utils.ConfigInit(FlagTenancyId, FlagCompartment)
 
+		// Get tenancy ID and tenancy name from Viper config
+		tenancyName := viper.GetString("tenancy-name")
+		tenancyId := viper.GetString("tenancy-id")
+		compartmentName := viper.GetString("compartment")
+
+		ociConfig := utils.SetupOciConfig()
 		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(identityErr)
 
-		tenancyId, tenancyName := resources.ValidateTenancyId(identityClient, ociConfig)
 		compartments := resources.FetchCompartments(tenancyId, identityClient)
-		compartmentId, _ := resources.DetermineCompartment(compartments, identityClient, tenancyId, tenancyName)
+		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartmentName)
 
 		bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(err)
@@ -30,7 +39,7 @@ var bastionCmd = &cobra.Command{
 		flagList, _ := cmd.Flags().GetBool("list")
 
 		if flagList {
-			resources.ListBastions(bastions)
+			resources.ListBastions(bastions, tenancyName, compartmentName)
 		}
 	},
 }

@@ -10,7 +10,6 @@ import (
 	"github.com/cnopslabs/oshiv/internal/utils"
 	"github.com/oracle/oci-go-sdk/v65/identity"
 	"github.com/rodaine/table"
-	"github.com/spf13/viper"
 )
 
 // Fetch compartments (names/IDs) from OCI
@@ -92,37 +91,19 @@ func SetCompartmentName(compartmentName string) {
 	utils.SetConfigString("compartment-name", compartmentName)
 }
 
-// Lookup compartment ID by name
-func lookupCompartmentId(compartments map[string]string, compartmentName string) string {
-	compartmentId := compartments[compartmentName]
-	utils.Logger.Debug(compartmentName + "'s compartment ID is " + compartmentId)
-
-	return compartmentId
-}
-
 // Determine compartment name or ID, lookup name from ID if ID is given
-func DetermineCompartment(compartments map[string]string, identityClient identity.IdentityClient, tenancyId string, tenancyName string) (string, string) {
+func LookupCompartmentId(compartments map[string]string, tenancyId string, tenancyName string, compartmentName string) string {
 	var compartmentId string
-
-	// TODO: Should we move the setting of Viper config up into the cmd package?
-	// Viper uses the following order precedence: 1) flag, 2) env var, 3) config file, 4) key/value store, 4) default
-	// For compartment-name , we are currently only supporting 1 and 4 as there is no OCI CLI convention for env var
-	// If compartment name flag was passed, this has already been added to config as flag
-
-	// Use tenancy (I.e. the root compartment) as the default (lowest precedence order) in viper config
-	viper.SetDefault("compartment-name", tenancyName)
-
-	// Get compartment name from viper config
-	compartmentName := viper.GetString("compartment-name")
 
 	// Handle root compartment
 	if compartmentName == tenancyName {
 		compartmentId = tenancyId
 	} else {
-		compartmentId = lookupCompartmentId(compartments, compartmentName)
+		// compartmentId = lookupCompartmentId(compartments, compartmentName)
+		compartmentId = compartments[compartmentName]
 	}
 
 	utils.Logger.Debug("Compartment: " + compartmentName + "(" + compartmentId + ")")
 
-	return compartmentId, compartmentName
+	return compartmentId
 }

@@ -24,7 +24,7 @@ func FetchBastions(compartmentId string, client bastion.BastionClient) map[strin
 }
 
 // List and print bastions (OCI API call)
-func ListBastions(bastions map[string]string) {
+func ListBastions(bastions map[string]string, tenancyName string, compartmentName string) {
 	tbl := table.New("Bastion Name", "OCID")
 	tbl.WithHeaderFormatter(utils.HeaderFmt).WithFirstColumnFormatter(utils.ColumnFmt)
 
@@ -32,10 +32,11 @@ func ListBastions(bastions map[string]string) {
 		tbl.AddRow(bastionName, bastions[bastionName])
 	}
 
+	utils.FaintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartmentName + ")")
 	tbl.Print()
 
-	fmt.Println("\nTo set bastion name, run:")
-	utils.Yellow.Println("   oshiv bastion -s BASTION_NAME")
+	fmt.Print("\nTo specify bastion, pass flag: ")
+	utils.Yellow.Println("-b BASTION_NAME")
 }
 
 // Determine bastion name and then lookup ID
@@ -66,9 +67,11 @@ func SetBastionName(bastionName string) {
 }
 
 // List and print all active bastion sessions
-func ListBastionSessions(client bastion.BastionClient, bastionId string) {
+func ListBastionSessions(client bastion.BastionClient, bastionId string, tenancyName string, compartmentName string) {
 	response, err := client.ListSessions(context.Background(), bastion.ListSessionsRequest{BastionId: &bastionId})
 	utils.CheckError(err)
+
+	utils.FaintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartmentName + ")")
 
 	for _, session := range response.Items {
 		if session.LifecycleState == "ACTIVE" {
