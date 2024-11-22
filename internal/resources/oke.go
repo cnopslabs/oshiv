@@ -84,8 +84,8 @@ func matchClusters(pattern string, clusters []Cluster) []Cluster {
 	return matches
 }
 
-// Find and print clusters
-func FindClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string, searchString string) {
+// Find clusters matching search pattern
+func FindClusters(containerEngineClient containerengine.ContainerEngineClient, compartmentId string, searchString string) []Cluster {
 	var clusterMatches []Cluster
 	clusters := fetchClusters(containerEngineClient, compartmentId)
 
@@ -100,8 +100,15 @@ func FindClusters(containerEngineClient containerengine.ContainerEngineClient, c
 		utils.Faint.Println(strconv.Itoa(len(clusterMatches)) + " cluster(s)")
 	}
 
-	if len(clusterMatches) > 0 {
-		for _, cluster := range clusterMatches {
+	return clusterMatches
+}
+
+// Print clusters
+func PrintClusters(clusters []Cluster, tenancyName string, compartmentName string) {
+	if len(clusters) > 0 {
+		utils.FaintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartmentName + ")")
+
+		for _, cluster := range clusters {
 			fmt.Print("Name: ")
 			utils.Blue.Println(cluster.name)
 			fmt.Print("Cluster ID: ")

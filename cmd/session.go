@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/cnopslabs/oshiv/internal/resources"
 	"github.com/cnopslabs/oshiv/internal/utils"
 	"github.com/oracle/oci-go-sdk/v65/bastion"
@@ -14,47 +17,50 @@ var sessionCmd = &cobra.Command{
 	Short: "Create, list, and connect to bastion sessions",
 	Long:  "TODO",
 	Run: func(cmd *cobra.Command, args []string) {
-		ociConfig := utils.SetupOciConfig()
+		// Lookup tenancy ID and compartment flags and add to Viper config if passed
+		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
+		FlagCompartment := rootCmd.Flags().Lookup("compartment")
+		utils.ConfigInit(FlagTenancyId, FlagCompartment)
 
+		// Get tenancy ID and tenancy name from Viper config
+		tenancyName := viper.GetString("tenancy-name")
+		tenancyId := viper.GetString("tenancy-id")
+		compartmentName := viper.GetString("compartment")
+
+		ociConfig := utils.SetupOciConfig()
 		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(identityErr)
 
-		tenancyId, tenancyName := resources.ValidateTenancyId(identityClient, ociConfig)
 		compartments := resources.FetchCompartments(tenancyId, identityClient)
-		compartmentId, _ := resources.DetermineCompartment(compartments, identityClient, tenancyId, tenancyName)
+		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartmentName)
 
 		bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(err)
 
-		bastionInfo := resources.FetchBastions(compartmentId, bastionClient)
+		bastions := resources.FetchBastions(compartmentId, bastionClient)
 
-		flagSetBastion, _ := cmd.Flags().GetString("set-bastion")
-		if flagSetBastion != "" {
-			// Set bastion in Viper config and write to config file
-			resources.SetBastionName(flagSetBastion)
+		bastionNameFromFlag, _ := cmd.Flags().GetString("bastion-name")
+
+		var bastionName string
+		if bastionNameFromFlag == "" {
+			uniqueBastionName := resources.CheckForUniqueBastion(bastions)
+
+			if uniqueBastionName != "" {
+				bastionName = uniqueBastionName
+			} else {
+				fmt.Print("\nMust specify bastion flag: ")
+				utils.Yellow.Println("-b BASTION_NAME")
+				os.Exit(1)
+			}
+		} else {
+			bastionName = bastionNameFromFlag
 		}
 
-		// Get bastion details from Viper config
-		// Viper uses the following order precedence: 1) flag, 2) env var, 3) config file, 4) key/value store, 4) default
-		// Attempt to set bastion name from flag
-		viper.BindPFlag("bastion-name", cmd.Flags().Lookup("bastion-name"))
-
-		// Attempt to set bastion name from environment variable
-		viper.BindEnv("bastion-name", "OCI_BASTION_NAME")
-
-		// Get bastion name from viper config
-		bastionName := viper.GetString("bastion-name")
-
-		if bastionName == "" {
-			uniqueBastionName := resources.CheckForUniqueBastion(bastionInfo)
-			bastionName = uniqueBastionName
-		}
-
-		bastionId := bastionInfo[bastionName]
+		bastionId := bastions[bastionName]
 
 		flagListBastionSessions, _ := cmd.Flags().GetBool("list")
 		if flagListBastionSessions {
-			resources.ListBastionSessions(bastionClient, bastionId)
+			resources.ListBastionSessions(bastionClient, bastionId, tenancyName, compartmentName)
 		}
 	},
 }
@@ -64,6 +70,5 @@ func init() {
 
 	// Local flags only exposed to session sub-command
 	sessionCmd.Flags().StringP("bastion-name", "b", "", "Bastion name to use for session commands")
-	sessionCmd.Flags().StringP("set-bastion", "s", "", "Set bastion name")
 	sessionCmd.Flags().BoolP("list", "l", false, "List all bastion sessions")
 }

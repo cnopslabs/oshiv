@@ -8,6 +8,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/containerengine"
 	"github.com/oracle/oci-go-sdk/v65/identity"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var okeCmd = &cobra.Command{
@@ -15,14 +16,22 @@ var okeCmd = &cobra.Command{
 	Short: "Find and list OKE clusters",
 	Long:  "TODO",
 	Run: func(cmd *cobra.Command, args []string) {
-		ociConfig := utils.SetupOciConfig()
+		// Lookup tenancy ID and compartment flags and add to Viper config if passed
+		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
+		FlagCompartment := rootCmd.Flags().Lookup("compartment")
+		utils.ConfigInit(FlagTenancyId, FlagCompartment)
 
+		// Get tenancy ID and tenancy name from Viper config
+		tenancyName := viper.GetString("tenancy-name")
+		tenancyId := viper.GetString("tenancy-id")
+		compartmentName := viper.GetString("compartment")
+
+		ociConfig := utils.SetupOciConfig()
 		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(identityErr)
 
-		tenancyId, tenancyName := resources.ValidateTenancyId(identityClient, ociConfig)
 		compartments := resources.FetchCompartments(tenancyId, identityClient)
-		compartmentId, _ := resources.DetermineCompartment(compartments, identityClient, tenancyId, tenancyName)
+		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartmentName)
 
 		containerEngineClient, err := containerengine.NewContainerEngineClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(err)
@@ -31,9 +40,11 @@ var okeCmd = &cobra.Command{
 		flagFind, _ := cmd.Flags().GetString("find")
 
 		if flagList {
-			resources.FindClusters(containerEngineClient, compartmentId, "")
+			clusters := resources.FindClusters(containerEngineClient, compartmentId, "")
+			resources.PrintClusters(clusters, tenancyName, compartmentName)
 		} else if flagFind != "" {
-			resources.FindClusters(containerEngineClient, compartmentId, flagFind)
+			clusters := resources.FindClusters(containerEngineClient, compartmentId, flagFind)
+			resources.PrintClusters(clusters, tenancyName, compartmentName)
 		} else {
 			fmt.Println("Invalid flag or flag arguments")
 		}
