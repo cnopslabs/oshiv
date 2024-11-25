@@ -3,6 +3,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -63,6 +64,22 @@ func fetchClusters(containerEngineClient containerengine.ContainerEngineClient, 
 	}
 
 	return clusters
+}
+
+func FetchClusterId(containerEngineClient containerengine.ContainerEngineClient, compartmentId string, clusterName string) string {
+	clusters := fetchClusters(containerEngineClient, compartmentId)
+	var clusterId string
+
+	for _, cluster := range clusters {
+		if cluster.name == clusterName {
+			clusterId = cluster.id
+		} else {
+			fmt.Println("Unable to find ID of " + clusterName)
+			os.Exit(1)
+		}
+	}
+
+	return clusterId
 }
 
 // Match pattern and return cluster matches

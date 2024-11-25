@@ -37,8 +37,8 @@ func ConfigInit(FlagTenancyId *pflag.Flag, FlagCompartment *pflag.Flag) {
 	tenancyName := ValidateTenancyId(identityClient, tenancyId)
 	viper.Set("tenancy-name", tenancyName)
 
-	// Do not update config file with tenancy-name and tenancy-id if tenancy-id was passed via flag
-
+	// Do not update config file with tenancy-name and tenancy-id if tenancy-id was passed via flag because
+	// flags are treated as runtime overrides
 	if !FlagTenancyId.Changed {
 		// This means tenancy-id was set via env var, file, or default (oci config)
 		// Update config file with tenancy-name and tenancy-id
