@@ -43,7 +43,7 @@ var sessionCmd = &cobra.Command{
 
 		var bastionName string
 		if bastionNameFromFlag == "" {
-			uniqueBastionName := resources.CheckForUniqueBastion(bastions)
+			uniqueBastionName, _ := resources.CheckForUniqueBastion(bastions)
 
 			if uniqueBastionName != "" {
 				bastionName = uniqueBastionName
