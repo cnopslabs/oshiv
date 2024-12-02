@@ -6,7 +6,12 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/cnopslabs/oshiv/internal/resources"
+	"github.com/cnopslabs/oshiv/internal/utils"
+	"github.com/oracle/oci-go-sdk/v65/core"
+	"github.com/oracle/oci-go-sdk/v65/identity"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // imageCmd represents the image command
@@ -15,20 +20,44 @@ var imageCmd = &cobra.Command{
 	Short: "Find and list OCI compute images",
 	Long:  "TODO",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("image called")
+		// Lookup tenancy ID and compartment flags and add to Viper config if passed
+		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
+		FlagCompartment := rootCmd.Flags().Lookup("compartment")
+		utils.ConfigInit(FlagTenancyId, FlagCompartment)
+
+		// Get tenancy ID and tenancy name from Viper config
+		tenancyName := viper.GetString("tenancy-name")
+		tenancyId := viper.GetString("tenancy-id")
+		compartmentName := viper.GetString("compartment")
+
+		ociConfig := utils.SetupOciConfig()
+		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
+		utils.CheckError(identityErr)
+
+		compartments := resources.FetchCompartments(tenancyId, identityClient)
+		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartmentName)
+
+		computeClient, err := core.NewComputeClientWithConfigurationProvider(ociConfig)
+		utils.CheckError(err)
+
+		flagList, _ := cmd.Flags().GetBool("list")
+		flagFind, _ := cmd.Flags().GetString("find")
+
+		if flagList {
+			resources.ListImages(computeClient, compartmentId)
+		} else if flagFind != "" {
+			// TODO: implement find
+			fmt.Println("Image search is not yet enabled, listing all images. Use grep!")
+			resources.ListImages(computeClient, compartmentId)
+		} else {
+			fmt.Println("Invalid flag or flag arguments")
+		}
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(imageCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// imageCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// imageCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	imageCmd.Flags().BoolP("list", "l", false, "List all images")
+	imageCmd.Flags().StringP("find", "f", "", "Find image by name pattern search")
 }

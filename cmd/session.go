@@ -59,8 +59,12 @@ var sessionCmd = &cobra.Command{
 		bastionId := bastions[bastionName]
 
 		flagListBastionSessions, _ := cmd.Flags().GetBool("list")
+		flagListActiveBastionSessions, _ := cmd.Flags().GetBool("list-active")
+
 		if flagListBastionSessions {
-			resources.ListBastionSessions(bastionClient, bastionId, tenancyName, compartmentName)
+			resources.ListBastionSessions(bastionClient, bastionId, tenancyName, compartmentName, flagListActiveBastionSessions)
+		} else if flagListActiveBastionSessions {
+			resources.ListBastionSessions(bastionClient, bastionId, tenancyName, compartmentName, flagListActiveBastionSessions)
 		}
 	},
 }
@@ -71,4 +75,5 @@ func init() {
 	// Local flags only exposed to session sub-command
 	sessionCmd.Flags().StringP("bastion-name", "b", "", "Bastion name to use for session commands")
 	sessionCmd.Flags().BoolP("list", "l", false, "List all bastion sessions")
+	sessionCmd.Flags().BoolP("list-active", "a", false, "List all bastion sessions")
 }
