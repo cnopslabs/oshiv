@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/cnopslabs/oshiv/internal/utils"
+	"github.com/fatih/color"
 	"github.com/oracle/oci-go-sdk/v65/bastion"
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/rodaine/table"
@@ -31,6 +32,38 @@ func FetchBastions(compartmentId string, client bastion.BastionClient) map[strin
 	}
 
 	return bastions
+}
+
+// Check status of bastion session
+func FetchSession(bastionClient bastion.BastionClient, sessionId *string, flagType string) Session {
+	response, err := bastionClient.GetSession(context.Background(), bastion.GetSessionRequest{SessionId: sessionId})
+	utils.CheckError(err)
+
+	var ipAddress *string
+	var sshUser *string
+	var sshPort *int
+
+	if flagType == "port-forward" {
+		// Required info for port forward SSH connections
+		sshSessionTargetResourceDetails := response.Session.TargetResourceDetails.(bastion.PortForwardingSessionTargetResourceDetails)
+		ipAddress = sshSessionTargetResourceDetails.TargetResourcePrivateIpAddress
+		sshPort = sshSessionTargetResourceDetails.TargetResourcePort
+	} else {
+		// Required info for managed SSH connections
+		sshSessionTargetResourceDetails := response.Session.TargetResourceDetails.(bastion.ManagedSshSessionTargetResourceDetails)
+		ipAddress = sshSessionTargetResourceDetails.TargetResourcePrivateIpAddress
+		sshUser = sshSessionTargetResourceDetails.TargetResourceOperatingSystemUserName
+		sshPort = sshSessionTargetResourceDetails.TargetResourcePort
+	}
+
+	var session Session
+	if flagType == "port-forward" {
+		session = Session{response.Session.LifecycleState, *ipAddress, "", *sshPort}
+	} else {
+		session = Session{response.Session.LifecycleState, *ipAddress, *sshUser, *sshPort}
+	}
+
+	return session
 }
 
 // List and print bastions (OCI API call)
@@ -71,16 +104,59 @@ func CheckForUniqueBastion(bastions map[string]string) (string, string) {
 }
 
 // List and print all active bastion sessions
-func ListBastionSessions(bastionClient bastion.BastionClient, bastionId string, tenancyName string, compartmentName string) {
+func ListBastionSessions(bastionClient bastion.BastionClient, bastionId string, tenancyName string, compartmentName string, listOnlyActiveSessions bool) {
 	response, err := bastionClient.ListSessions(context.Background(), bastion.ListSessionsRequest{BastionId: &bastionId})
 	utils.CheckError(err)
 
+	fmt.Println(listOnlyActiveSessions)
 	utils.FaintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartmentName + ")")
 
+	// TODO: Fix this!
+	// put sessions into []Session and then handle active vs all
+	// or maybe get rid of, listing non-active session may only be useful for troubleshooting
 	for _, session := range response.Items {
-		if session.LifecycleState == "ACTIVE" {
+		if listOnlyActiveSessions {
+			if session.LifecycleState == "ACTIVE" {
+				fmt.Print("Name: ")
+				utils.Blue.Println(*session.DisplayName)
+				fmt.Print("ID: ")
+				utils.Yellow.Println(*session.Id)
+
+				fmt.Print("Created: ")
+				utils.Yellow.Println(*session.TimeCreated)
+
+				// TODO: Consolidate port-fw and ssh session details into a map and print all at once
+				portFwTargetResourceDetails, ok := session.TargetResourceDetails.(bastion.PortForwardingSessionTargetResourceDetails)
+				if ok {
+					fmt.Print("Type: ")
+					utils.Yellow.Println("PortForward")
+					fmt.Print("IP:Port: ")
+					utils.Yellow.Print(*portFwTargetResourceDetails.TargetResourcePrivateIpAddress)
+					utils.Yellow.Print(":")
+					utils.Yellow.Println(*portFwTargetResourceDetails.TargetResourcePort)
+				}
+
+				sshTargetResourceDetails, ok := session.TargetResourceDetails.(bastion.ManagedSshSessionTargetResourceDetails)
+				if ok {
+					fmt.Print("Type: ")
+					utils.Yellow.Println("SSH")
+
+					fmt.Print("Instance ID: ")
+					utils.Yellow.Println(*sshTargetResourceDetails.TargetResourceId)
+
+					fmt.Print("IP:Port: ")
+					utils.Yellow.Print(*sshTargetResourceDetails.TargetResourcePrivateIpAddress)
+					utils.Yellow.Print(":")
+					utils.Yellow.Println(*sshTargetResourceDetails.TargetResourcePort)
+				}
+
+				fmt.Println("")
+			}
+		} else {
 			fmt.Print("Name: ")
 			utils.Blue.Println(*session.DisplayName)
+			fmt.Print("State: ")
+			utils.Blue.Println(session.LifecycleState)
 			fmt.Print("ID: ")
 			utils.Yellow.Println(*session.Id)
 
@@ -114,51 +190,44 @@ func ListBastionSessions(bastionClient bastion.BastionClient, bastionId string, 
 
 			fmt.Println("")
 		}
+
 	}
-}
-
-// Create a manages SSH bastion session
-func CreateManagedSshSession(bastionId string, bastionClient bastion.BastionClient, targetInstance string, targetIp string, publicKeyContent string, sshUser string, sshPort int, sessionTtl int) *string {
-	req := bastion.CreateSessionRequest{
-		CreateSessionDetails: bastion.CreateSessionDetails{
-			BastionId:           &bastionId,
-			DisplayName:         common.String("oshivSession"),
-			KeyDetails:          &bastion.PublicKeyDetails{PublicKeyContent: &publicKeyContent},
-			SessionTtlInSeconds: common.Int(sessionTtl),
-			TargetResourceDetails: bastion.CreateManagedSshSessionTargetResourceDetails{
-				TargetResourceId:                      &targetInstance,
-				TargetResourceOperatingSystemUserName: &sshUser,
-				TargetResourcePort:                    &sshPort,
-				TargetResourcePrivateIpAddress:        &targetIp,
-			},
-		},
-	}
-
-	fmt.Println("Creating managed SSH session...")
-	response, err := bastionClient.CreateSession(context.Background(), req)
-	utils.CheckError(err)
-
-	sessionId := response.Session.Id
-	utils.Blue.Println("\nSession ID")
-	fmt.Println(*sessionId)
-	fmt.Println("")
-
-	return sessionId
 }
 
 // Create a port forward SSH bastion session
-func CreatePortFwSession(bastionId string, bastionClient bastion.BastionClient, targetIp string, publicKeyContent string, remoteFwPort int, sessionTtl int) *string {
-	req := bastion.CreateSessionRequest{
-		CreateSessionDetails: bastion.CreateSessionDetails{
-			BastionId:           &bastionId,
-			DisplayName:         common.String("oshivSession"),
-			KeyDetails:          &bastion.PublicKeyDetails{PublicKeyContent: &publicKeyContent},
-			SessionTtlInSeconds: common.Int(sessionTtl),
-			TargetResourceDetails: bastion.PortForwardingSessionTargetResourceDetails{
-				TargetResourcePort:             &remoteFwPort,
-				TargetResourcePrivateIpAddress: &targetIp,
+func CreateBastionSession(bastionClient bastion.BastionClient, bastionId string, sessionType string, publicKeyContent string, targetIp string, sshPort int, hostFwPort int, sessionTtl int, targetInstanceId string, sshUser string) *string {
+	var req bastion.CreateSessionRequest
+
+	switch sessionType {
+	case "port-forward":
+		req = bastion.CreateSessionRequest{
+			CreateSessionDetails: bastion.CreateSessionDetails{
+				BastionId:           &bastionId,
+				DisplayName:         common.String("oshivSession"),
+				KeyDetails:          &bastion.PublicKeyDetails{PublicKeyContent: &publicKeyContent},
+				SessionTtlInSeconds: common.Int(sessionTtl),
+				TargetResourceDetails: bastion.PortForwardingSessionTargetResourceDetails{
+					TargetResourcePort:             &hostFwPort, // In the case of a port fw session, port represents the host-port to forward (as in ssh -L port:host:host-port)
+					TargetResourcePrivateIpAddress: &targetIp,
+				},
 			},
-		},
+		}
+
+	case "managed":
+		req = bastion.CreateSessionRequest{
+			CreateSessionDetails: bastion.CreateSessionDetails{
+				BastionId:           &bastionId,
+				DisplayName:         common.String("oshivSession"),
+				KeyDetails:          &bastion.PublicKeyDetails{PublicKeyContent: &publicKeyContent},
+				SessionTtlInSeconds: common.Int(sessionTtl),
+				TargetResourceDetails: bastion.CreateManagedSshSessionTargetResourceDetails{
+					TargetResourceId:                      &targetInstanceId,
+					TargetResourceOperatingSystemUserName: &sshUser,
+					TargetResourcePort:                    &sshPort, // In the case of a managed session, port represents the port to connect to on the remote host (as in ssh -p 22)
+					TargetResourcePrivateIpAddress:        &targetIp,
+				},
+			},
+		}
 	}
 
 	fmt.Println("Creating port forwarding session...")
@@ -173,48 +242,10 @@ func CreatePortFwSession(bastionId string, bastionClient bastion.BastionClient, 
 	return sessionId
 }
 
-// Check status of bastion session
-func FetchSession(bastionClient bastion.BastionClient, sessionId *string, flagType string) Session {
-	response, err := bastionClient.GetSession(context.Background(), bastion.GetSessionRequest{SessionId: sessionId})
-	utils.CheckError(err)
-
-	// utils.Logger.Debug("GetSessionResponse", response.Session)
-	// utils.Logger.Debug("nEndpoint", client.Endpoint())
-
-	var ipAddress *string
-	var sshUser *string
-	var sshPort *int
-
-	if flagType == "port-forward" {
-		// Required info for port forward SSH connections
-		sshSessionTargetResourceDetails := response.Session.TargetResourceDetails.(bastion.PortForwardingSessionTargetResourceDetails)
-		ipAddress = sshSessionTargetResourceDetails.TargetResourcePrivateIpAddress
-		sshPort = sshSessionTargetResourceDetails.TargetResourcePort
-	} else {
-		// Required info for managed SSH connections
-		sshSessionTargetResourceDetails := response.Session.TargetResourceDetails.(bastion.ManagedSshSessionTargetResourceDetails)
-		ipAddress = sshSessionTargetResourceDetails.TargetResourcePrivateIpAddress
-		sshUser = sshSessionTargetResourceDetails.TargetResourceOperatingSystemUserName
-		sshPort = sshSessionTargetResourceDetails.TargetResourcePort
-	}
-
-	var session Session
-	if flagType == "port-forward" {
-		session = Session{response.Session.LifecycleState, *ipAddress, "", *sshPort}
-	} else {
-		session = Session{response.Session.LifecycleState, *ipAddress, *sshUser, *sshPort}
-	}
-
-	return session
-}
-
 // Print port forward SSH commands to connect via bastion
-func PrintPortFwSshCommands(bastionClient bastion.BastionClient, sessionId *string, targetIp string, sshPort int, sshIdentityFile string, localFwPort int, remoteFwPort int, flagOkeId string) {
+func PrintPortFwSshCommands(bastionClient bastion.BastionClient, sessionId *string, targetIp string, sshPort int, sshPrivateKey string, localFwPort int, hostFwPort int, flagOkeId string) {
 	bastionEndpointUrl, err := url.Parse(bastionClient.Endpoint())
 	utils.CheckError(err)
-
-	// sessionIdStr := *sessionId
-	// bastionHost := sessionIdStr + "@host." + bastionEndpointUrl.Host
 
 	bastionHost := *sessionId + "@host." + bastionEndpointUrl.Host
 
@@ -224,7 +255,47 @@ func PrintPortFwSshCommands(bastionClient bastion.BastionClient, sessionId *stri
 	}
 
 	utils.Yellow.Println("\nPort Forwarding command")
-	fmt.Println("ssh -i \"" + sshIdentityFile + "\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
+	fmt.Println("ssh -i \"" + sshPrivateKey + "\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 
-	fmt.Println("-p " + strconv.Itoa(sshPort) + " -N -L " + strconv.Itoa(localFwPort) + ":" + targetIp + ":" + strconv.Itoa(remoteFwPort) + " " + bastionHost)
+	fmt.Println("-p " + strconv.Itoa(sshPort) + " -N -L " + strconv.Itoa(localFwPort) + ":" + targetIp + ":" + strconv.Itoa(hostFwPort) + " " + bastionHost)
+}
+
+// Print SSH commands to connect via bastion
+func PrintManagedSshCommands(bastionClient bastion.BastionClient, sessionId *string, instanceIp string, sshUser string, sshPort int, sshIdentityFile string, localFwPort int, hostFwPort int) {
+	bastionEndpointUrl, err := url.Parse(bastionClient.Endpoint())
+	utils.CheckError(err)
+
+	sessionIdStr := *sessionId
+	bastionHost := sessionIdStr + "@host." + bastionEndpointUrl.Host
+
+	// TODO: Consider proxy jump flag for commands where applicable - https://www.ateam-oracle.com/post/openssh-proxyjump-with-oci-bastion-service
+	if hostFwPort == 0 {
+		utils.Yellow.Println("\nTunnel command")
+		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
+		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
+		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
+		fmt.Println("-P " + strconv.Itoa(sshPort) + " " + sshUser + "@" + instanceIp + " -N -L " + color.RedString("LOCAL_PORT") + ":" + instanceIp + ":" + color.RedString("REMOTE_PORT"))
+	} else if localFwPort != 0 {
+		utils.Yellow.Println("\nTunnel command")
+		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
+		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
+		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
+		fmt.Println("-P " + strconv.Itoa(sshPort) + " " + sshUser + "@" + instanceIp + " -N -L " + strconv.Itoa(localFwPort) + ":" + instanceIp + ":" + strconv.Itoa(hostFwPort))
+	} else {
+		utils.Yellow.Println("\nTunnel command")
+		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
+		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
+		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
+		fmt.Println("-P " + strconv.Itoa(sshPort) + " " + sshUser + "@" + instanceIp + " -N -L " + strconv.Itoa(hostFwPort) + ":" + instanceIp + ":" + strconv.Itoa(hostFwPort))
+	}
+
+	utils.Yellow.Println("\nSCP command")
+	fmt.Println("scp -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P " + strconv.Itoa(sshPort) + " \\")
+	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p -p 22 " + bastionHost + "' \\")
+	fmt.Println(color.RedString("SOURCE_PATH ") + sshUser + "@" + instanceIp + ":" + color.RedString("TARGET_PATH"))
+
+	utils.Yellow.Println("\nSSH command")
+	fmt.Println("ssh -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
+	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p -p 22 " + bastionHost + "' \\")
+	fmt.Println("-P " + strconv.Itoa(sshPort) + " " + sshUser + "@" + instanceIp)
 }
