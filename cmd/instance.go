@@ -56,6 +56,7 @@ var instanceCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(instanceCmd)
 
+	// TODO: Implement list vs. list-all (with image info)
 	instanceCmd.Flags().BoolP("list", "l", false, "List all instances")
 	instanceCmd.Flags().StringP("find", "f", "", "Find instance by name pattern search")
 }
