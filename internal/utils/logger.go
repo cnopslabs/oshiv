@@ -7,8 +7,8 @@ import (
 
 var Logger *slog.Logger
 
-// Note: Logger will most likely need to initialize first, if other utils.inits
-// are created, will need to handle initialization order elsewhere
+// Note: Logger will most likely need to initialize first.
+// If other utils.inits are added we will need to handle initialization order
 func init() {
 	lvl := new(slog.LevelVar)
 	lvl.Set(slog.LevelInfo)

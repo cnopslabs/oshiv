@@ -1,6 +1,3 @@
-/*
-Copyright © 2024 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -14,28 +11,28 @@ import (
 	"github.com/spf13/viper"
 )
 
-// instanceCmd represents the instance command
 var instanceCmd = &cobra.Command{
-	Use:   "instance",
-	Short: "Find and list OCI instances",
-	Long:  "TODO",
+	Use:     "instance",
+	Short:   "Find and list OCI instances",
+	Long:    "Find and list OCI instances",
+	Aliases: []string{"inst"},
 	Run: func(cmd *cobra.Command, args []string) {
-		// Lookup tenancy ID and compartment flags and add to Viper config if passed
-		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
-		FlagCompartment := rootCmd.Flags().Lookup("compartment")
-		utils.ConfigInit(FlagTenancyId, FlagCompartment)
-
-		// Get tenancy ID and tenancy name from Viper config
-		tenancyName := viper.GetString("tenancy-name")
-		tenancyId := viper.GetString("tenancy-id")
-		compartmentName := viper.GetString("compartment")
-
 		ociConfig := utils.SetupOciConfig()
 		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(identityErr)
 
+		// Read tenancy ID flag and calculate tenancy
+		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
+		utils.SetTenancyConfig(FlagTenancyId, ociConfig)
+		tenancyId := viper.GetString("tenancy-id")
+		tenancyName := viper.GetString("tenancy-name")
+
+		// Read compartment flag and add to Viper config
+		FlagCompartment := rootCmd.Flags().Lookup("compartment")
 		compartments := resources.FetchCompartments(tenancyId, identityClient)
-		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartmentName)
+		utils.SetCompartmentConfig(FlagCompartment, compartments, tenancyName)
+		compartment := viper.GetString("compartment")
+		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartment)
 
 		computeClient, err := core.NewComputeClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(err)
@@ -47,9 +44,9 @@ var instanceCmd = &cobra.Command{
 		flagFind, _ := cmd.Flags().GetString("find")
 
 		if flagList {
-			resources.ListInstances(computeClient, compartmentId, vnetClient)
+			resources.ListInstances(computeClient, compartmentId, vnetClient, compartment, tenancyName)
 		} else if flagFind != "" {
-			resources.FindInstances(computeClient, vnetClient, compartmentId, flagFind, true)
+			resources.FindInstances(computeClient, vnetClient, compartmentId, flagFind, true, compartment, tenancyName)
 		} else {
 			fmt.Println("Invalid flag or flag arguments")
 		}

@@ -108,10 +108,9 @@ func ListBastionSessions(bastionClient bastion.BastionClient, bastionId string, 
 	response, err := bastionClient.ListSessions(context.Background(), bastion.ListSessionsRequest{BastionId: &bastionId})
 	utils.CheckError(err)
 
-	fmt.Println(listOnlyActiveSessions)
 	utils.FaintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartmentName + ")")
 
-	// TODO: Fix this!
+	// TODO: Fix inefficient code for bastion session object
 	// put sessions into []Session and then handle active vs all
 	// or maybe get rid of, listing non-active session may only be useful for troubleshooting
 	for _, session := range response.Items {

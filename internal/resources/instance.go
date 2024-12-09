@@ -13,6 +13,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/core"
 )
 
+// TODO: Add operating system from image
 type Instance struct {
 	name     string
 	id       string
@@ -182,9 +183,11 @@ func fetchInstances(computeClient core.ComputeClient, compartmentId string) []In
 }
 
 // List and print instances (OCI API call)
-func ListInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient) {
+func ListInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient, compartment string, tenancyName string) {
 	instances := fetchInstances(computeClient, compartmentId)
 	// returns []Instance
+
+	utils.FaintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartment + ")")
 
 	for _, instance := range instances {
 		region := instance.region
@@ -253,7 +256,8 @@ func matchInstances(pattern string, instances []Instance) []Instance {
 }
 
 // Find and print instances (OCI API call)
-func FindInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetworkClient, compartmentId string, flagSearchString string, retrieveImageInfo bool) {
+// TODO: Consider consolidating FindInstances and ListInstances similar to OKE
+func FindInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetworkClient, compartmentId string, flagSearchString string, retrieveImageInfo bool, compartment string, tenancyName string) {
 	pattern := flagSearchString
 
 	// When more than ~25 private IPs need to be looked up, its faster to batch them all together
@@ -313,15 +317,11 @@ func FindInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 		}
 	}
 
+	utils.FaintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartment + ")")
 	if len(instancesWithIP) > 0 {
 		sort.Sort(instancesByName(instancesWithIP))
 
 		for _, instance := range instancesWithIP {
-			region := instance.region
-			ad := instance.ad
-			strToRemove := "bKwM:" + region + "-" // TODO: This pattern needs to be updated. bKwM is not the universal prefix
-			ad_short := strings.Replace(ad, strToRemove, "", -1)
-
 			fd := instance.fd
 			fd_short := strings.Replace(fd, "FAULT-DOMAIN", "FD", -1)
 
@@ -338,7 +338,7 @@ func FindInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 			utils.Yellow.Print(fd_short)
 
 			fmt.Print(" AD: ")
-			utils.Yellow.Println(ad_short)
+			utils.Yellow.Println(instance.ad)
 
 			fmt.Print("Shape: ")
 			utils.Yellow.Print(instance.shape)

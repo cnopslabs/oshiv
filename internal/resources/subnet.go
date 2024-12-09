@@ -16,7 +16,7 @@ type Subnet struct {
 	subnetType string
 }
 
-// TODO: This sorts alphabetically, so not great for CIDR blocks. Prob should revert to sort by name
+// TODO: This sorts alphabetically, so not great for CIDR blocks. Revert to sort by name or create CIDR sort function
 // Sort subnets bt CIDR
 type subnetsByCidr []Subnet
 

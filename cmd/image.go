@@ -1,6 +1,3 @@
-/*
-Copyright © 2024 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -14,28 +11,29 @@ import (
 	"github.com/spf13/viper"
 )
 
-// imageCmd represents the image command
 var imageCmd = &cobra.Command{
-	Use:   "image",
-	Short: "Find and list OCI compute images",
-	Long:  "TODO",
+	Use:     "image",
+	Short:   "Find and list OCI compute images",
+	Long:    "Find and list OCI compute images",
+	Aliases: []string{"img"},
 	Run: func(cmd *cobra.Command, args []string) {
-		// Lookup tenancy ID and compartment flags and add to Viper config if passed
-		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
-		FlagCompartment := rootCmd.Flags().Lookup("compartment")
-		utils.ConfigInit(FlagTenancyId, FlagCompartment)
-
-		// Get tenancy ID and tenancy name from Viper config
-		tenancyName := viper.GetString("tenancy-name")
-		tenancyId := viper.GetString("tenancy-id")
-		compartmentName := viper.GetString("compartment")
-
 		ociConfig := utils.SetupOciConfig()
 		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(identityErr)
 
+		// Read tenancy ID flag and calculate tenancy
+		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
+		utils.SetTenancyConfig(FlagTenancyId, ociConfig)
+		tenancyId := viper.GetString("tenancy-id")
+		tenancyName := viper.GetString("tenancy-name")
+
+		// Read compartment flag and add to Viper config
+		FlagCompartment := rootCmd.Flags().Lookup("compartment")
 		compartments := resources.FetchCompartments(tenancyId, identityClient)
-		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartmentName)
+		utils.SetCompartmentConfig(FlagCompartment, compartments, tenancyName)
+		compartment := viper.GetString("compartment")
+
+		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartment)
 
 		computeClient, err := core.NewComputeClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(err)
@@ -44,11 +42,11 @@ var imageCmd = &cobra.Command{
 		flagFind, _ := cmd.Flags().GetString("find")
 
 		if flagList {
-			resources.ListImages(computeClient, compartmentId)
+			resources.ListImages(computeClient, compartmentId, compartment, tenancyName)
 		} else if flagFind != "" {
 			// TODO: implement find
 			fmt.Println("Image search is not yet enabled, listing all images. Use grep!")
-			resources.ListImages(computeClient, compartmentId)
+			resources.ListImages(computeClient, compartmentId, compartment, tenancyName)
 		} else {
 			fmt.Println("Invalid flag or flag arguments")
 		}
