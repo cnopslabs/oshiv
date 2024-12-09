@@ -183,55 +183,150 @@ func fetchInstances(computeClient core.ComputeClient, compartmentId string) []In
 }
 
 // List and print instances (OCI API call)
-func ListInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient, compartment string, tenancyName string) {
+func ListInstances(computeClient core.ComputeClient, compartmentId string, vnetClient core.VirtualNetworkClient, retrieveImageInfo bool, compartment string, tenancyName string) {
+	// When more than ~25 private IPs need to be looked up, its faster to batch them all together
+	ipFetchAllThreshold := 25
+
 	instances := fetchInstances(computeClient, compartmentId)
 	// returns []Instance
 
-	utils.FaintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartment + ")")
+	var batchFetchAllIps bool
+	count := len(instances)
+	utils.Faint.Println(strconv.Itoa(count) + " instances")
+
+	if count > ipFetchAllThreshold {
+		batchFetchAllIps = true
+	} else {
+		batchFetchAllIps = false
+	}
+
+	// Get ALL VNIC attachments
+	// Once again, doing this because the request does not support filtering in the request
+	attachments, attachments_subnets := fetchVnicAttachments(computeClient, compartmentId)
+	// returns map of instanceId: vnicId
+
+	vNicIdsToIps := make(map[string]string)
+	if batchFetchAllIps {
+		vNicIdsToIps = fetchPrivateIps(vnetClient, compartmentId) // This is inefficient when instance search results are small, resort to fetchPrivateIp
+		// returns map of vnicId:privateIp
+	}
+
+	var instancesWithIP []Instance
+	var privateIp string
 
 	for _, instance := range instances {
-		region := instance.region
-		ad := instance.ad
-		strToRemove := "bKwM:" + region + "-"
-		ad_short := strings.Replace(ad, strToRemove, "", -1)
+		vnicId, ok := attachments[instance.id]
+		if ok {
+			if batchFetchAllIps {
+				privateIp = vNicIdsToIps[vnicId]
+			} else {
+				privateIp = fetchPrivateIp(vnetClient, vnicId)
+			}
 
-		fd := instance.fd
-		fd_short := strings.Replace(fd, "FAULT-DOMAIN", "FD", -1)
+			instance.ip = privateIp
 
-		fmt.Print("Name: ")
-		utils.Blue.Println(instance.name)
+			subnetId, ok := attachments_subnets[instance.id]
+			if ok {
+				instance.subnetId = subnetId
+				instancesWithIP = append(instancesWithIP, instance) // TODO: Im sure theres a better way to do this using a single slice
+			}
 
-		fmt.Print("ID: ")
-		utils.Yellow.Println(instance.id)
+		} else {
+			fmt.Println("Unable to lookup VNIC for " + instance.id)
+		}
+	}
 
-		fmt.Print("Private IP: ")
-		utils.Yellow.Print(instance.ip)
+	utils.FaintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartment + ")")
 
-		fmt.Print(" FD: ")
-		utils.Yellow.Print(fd_short)
+	if len(instancesWithIP) > 0 {
+		sort.Sort(instancesByName(instancesWithIP))
 
-		fmt.Print(" AD: ")
-		utils.Yellow.Println(ad_short)
+		for _, instance := range instancesWithIP {
+			fd := instance.fd
+			fd_short := strings.Replace(fd, "FAULT-DOMAIN", "FD", -1)
 
-		fmt.Print("Shape: ")
-		utils.Yellow.Print(instance.shape)
+			fmt.Print("Name: ")
+			utils.Blue.Println(instance.name)
 
-		fmt.Print(" Mem: ")
-		utils.Yellow.Print(instance.mem)
+			fmt.Print("ID: ")
+			utils.Yellow.Println(instance.id)
 
-		fmt.Print(" vCPUs: ")
-		utils.Yellow.Println(instance.vCPUs)
+			fmt.Print("Private IP: ")
+			utils.Yellow.Print(instance.ip)
 
-		fmt.Print("State: ")
-		utils.Yellow.Println(instance.state)
+			fmt.Print(" FD: ")
+			utils.Yellow.Print(fd_short)
 
-		fmt.Print("Created: ")
-		utils.Yellow.Println(instance.cDate)
+			fmt.Print(" AD: ")
+			utils.Yellow.Println(instance.ad)
 
-		fmt.Print("Image ID: ")
-		utils.Yellow.Println(instance.imageId)
+			fmt.Print("Shape: ")
+			utils.Yellow.Print(instance.shape)
 
-		fmt.Println("")
+			fmt.Print(" Mem: ")
+			utils.Yellow.Print(instance.mem)
+
+			fmt.Print(" vCPUs: ")
+			utils.Yellow.Println(instance.vCPUs)
+
+			fmt.Print("State: ")
+			utils.Yellow.Println(instance.state)
+
+			fmt.Print("Created: ")
+			utils.Yellow.Println(instance.cDate)
+
+			fmt.Print("Subnet ID: ")
+			utils.Yellow.Println(instance.subnetId)
+
+			if retrieveImageInfo {
+				image := fetchImage(computeClient, instance.imageId) // TODO: Performance hit: this adds ~100 ms per image lookup
+
+				fmt.Print("Image Name: ")
+				utils.Yellow.Println(image.name)
+
+				fmt.Print("Image ID: ")
+				utils.Yellow.Println(instance.imageId)
+
+				fmt.Print("Image Created: ")
+				utils.Yellow.Println(image.cDate)
+
+				fmt.Println("Image Tags (Free form): ")
+
+				freeformTagKeys := make([]string, 0, len(image.freeTags))
+				for key := range image.freeTags {
+					freeformTagKeys = append(freeformTagKeys, key)
+				}
+				sort.Strings(freeformTagKeys)
+
+				utils.Faint.Print("| ")
+				for _, key := range freeformTagKeys {
+					utils.Faint.Print(key + ": " + image.freeTags[key] + " | ")
+				}
+
+				fmt.Println("")
+
+				fmt.Println("Image Tags (Defined): ")
+				for tagNs, tags := range image.definedTags {
+					utils.Italic.Println(tagNs)
+
+					definedTagKeys := make([]string, 0, len(tags))
+					for key := range tags {
+						definedTagKeys = append(definedTagKeys, key)
+					}
+					sort.Strings(definedTagKeys)
+
+					utils.Faint.Print("| ")
+					for _, key := range definedTagKeys {
+						utils.Faint.Print(key + ": " + tags[key].(string) + " | ")
+					}
+
+					fmt.Println("")
+
+				}
+			}
+
+			fmt.Println("")
+		}
 	}
 }
 

@@ -199,6 +199,8 @@ func CreateBastionSession(bastionClient bastion.BastionClient, bastionId string,
 
 	switch sessionType {
 	case "port-forward":
+		fmt.Println("Creating port forwarding SSH session...")
+
 		req = bastion.CreateSessionRequest{
 			CreateSessionDetails: bastion.CreateSessionDetails{
 				BastionId:           &bastionId,
@@ -213,6 +215,13 @@ func CreateBastionSession(bastionClient bastion.BastionClient, bastionId string,
 		}
 
 	case "managed":
+		fmt.Println("Creating managed SSH session...")
+
+		fmt.Println(targetInstanceId)
+		fmt.Println(sshUser)
+		fmt.Println(sshPort)
+		fmt.Println(targetIp)
+
 		req = bastion.CreateSessionRequest{
 			CreateSessionDetails: bastion.CreateSessionDetails{
 				BastionId:           &bastionId,
@@ -229,7 +238,6 @@ func CreateBastionSession(bastionClient bastion.BastionClient, bastionId string,
 		}
 	}
 
-	fmt.Println("Creating port forwarding session...")
 	response, err := bastionClient.CreateSession(context.Background(), req)
 	utils.CheckError(err)
 
