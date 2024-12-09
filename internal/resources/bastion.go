@@ -217,10 +217,10 @@ func CreateBastionSession(bastionClient bastion.BastionClient, bastionId string,
 	case "managed":
 		fmt.Println("Creating managed SSH session...")
 
-		fmt.Println(targetInstanceId)
-		fmt.Println(sshUser)
-		fmt.Println(sshPort)
-		fmt.Println(targetIp)
+		utils.Logger.Debug("targetInstanceId: " + targetInstanceId)
+		utils.Logger.Debug("sshUser: " + sshUser)
+		utils.Logger.Debug("sshPort: " + strconv.Itoa(sshPort))
+		utils.Logger.Debug("targetIp: " + targetIp)
 
 		req = bastion.CreateSessionRequest{
 			CreateSessionDetails: bastion.CreateSessionDetails{

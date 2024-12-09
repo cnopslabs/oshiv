@@ -67,6 +67,12 @@ var bastionCmd = &cobra.Command{
 		flagLocalFwPort, _ := cmd.Flags().GetInt("local-fw-port")
 		flagHostFwPort, _ := cmd.Flags().GetInt("host-fw-port")
 
+		// if only hostFwPort is passed, set flagLocalFwPort to match
+		// This allows a sane default of ports for an SSH address like: -L 443:IP_ADDRESS:443
+		if flagLocalFwPort == 0 && flagHostFwPort != 0 {
+			flagLocalFwPort = flagHostFwPort
+		}
+
 		if flagList {
 			resources.ListBastions(bastions, tenancyName, compartment)
 			os.Exit(0)
@@ -153,10 +159,8 @@ func init() {
 	bastionCmd.Flags().StringP("user", "u", "opc", "The SSH username to use to connect to an instance")
 
 	// Flags applicable to port forward sessions
-	// Set both the local and host forwarding ports to 0 but if only hostFwPort is passed, use that for both unless localFwPort is explicitly passed
-	hostFwPort := 0
-	localFwPort := hostFwPort
 	bastionCmd.Flags().StringP("oke-name", "k", "", "Name of the OKE cluster to connect to")
-	bastionCmd.Flags().IntP("local-fw-port", "w", localFwPort, "The port on the local (client) host to forward connections from")
-	bastionCmd.Flags().IntP("host-fw-port", "f", hostFwPort, "The host port that connections are forwarded to")
+
+	bastionCmd.Flags().IntP("local-fw-port", "w", 0, "The port on the local (client) host to forward connections from")
+	bastionCmd.Flags().IntP("host-fw-port", "f", 0, "The host port that connections are forwarded to")
 }
