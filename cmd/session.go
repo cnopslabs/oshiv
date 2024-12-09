@@ -14,25 +14,26 @@ import (
 
 var sessionCmd = &cobra.Command{
 	Use:   "session",
-	Short: "Create, list, and connect to bastion sessions",
-	Long:  "TODO",
+	Short: "List bastion sessions",
+	Long:  "List bastion sessions",
 	Run: func(cmd *cobra.Command, args []string) {
-		// Lookup tenancy ID and compartment flags and add to Viper config if passed
-		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
-		FlagCompartment := rootCmd.Flags().Lookup("compartment")
-		utils.ConfigInit(FlagTenancyId, FlagCompartment)
-
-		// Get tenancy ID and tenancy name from Viper config
-		tenancyName := viper.GetString("tenancy-name")
-		tenancyId := viper.GetString("tenancy-id")
-		compartmentName := viper.GetString("compartment")
-
 		ociConfig := utils.SetupOciConfig()
 		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(identityErr)
 
+		// Read tenancy ID flag and calculate tenancy
+		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
+		utils.SetTenancyConfig(FlagTenancyId, ociConfig)
+		tenancyId := viper.GetString("tenancy-id")
+		tenancyName := viper.GetString("tenancy-name")
+
+		// Read compartment flag and add to Viper config
+		FlagCompartment := rootCmd.Flags().Lookup("compartment")
 		compartments := resources.FetchCompartments(tenancyId, identityClient)
-		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartmentName)
+		utils.SetCompartmentConfig(FlagCompartment, compartments, tenancyName)
+		compartment := viper.GetString("compartment")
+
+		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartment)
 
 		bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(err)
@@ -58,13 +59,13 @@ var sessionCmd = &cobra.Command{
 
 		bastionId := bastions[bastionName]
 
-		flagListBastionSessions, _ := cmd.Flags().GetBool("list")
-		flagListActiveBastionSessions, _ := cmd.Flags().GetBool("list-active")
+		flagListActiveBastionSessions, _ := cmd.Flags().GetBool("list")
+		flagListAllBastionSessions, _ := cmd.Flags().GetBool("list-all")
 
-		if flagListBastionSessions {
-			resources.ListBastionSessions(bastionClient, bastionId, tenancyName, compartmentName, flagListActiveBastionSessions)
+		if flagListAllBastionSessions {
+			resources.ListBastionSessions(bastionClient, bastionId, tenancyName, compartment, false)
 		} else if flagListActiveBastionSessions {
-			resources.ListBastionSessions(bastionClient, bastionId, tenancyName, compartmentName, flagListActiveBastionSessions)
+			resources.ListBastionSessions(bastionClient, bastionId, tenancyName, compartment, flagListActiveBastionSessions)
 		}
 	},
 }
@@ -72,8 +73,7 @@ var sessionCmd = &cobra.Command{
 func init() {
 	bastionCmd.AddCommand(sessionCmd)
 
-	// Local flags only exposed to session sub-command
 	sessionCmd.Flags().StringP("bastion-name", "b", "", "Bastion name to use for session commands")
-	sessionCmd.Flags().BoolP("list", "l", false, "List all bastion sessions")
-	sessionCmd.Flags().BoolP("list-active", "a", false, "List all bastion sessions")
+	sessionCmd.Flags().BoolP("list-all", "a", false, "List all bastion sessions")
+	sessionCmd.Flags().BoolP("list", "l", true, "List active bastion sessions")
 }

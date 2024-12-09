@@ -98,9 +98,10 @@ func fetchImages(computeClient core.ComputeClient, compartmentId string) []Image
 }
 
 // List and print images (OCI API call)
-func ListImages(computeClient core.ComputeClient, compartmentId string) {
-	// TODO: print tenancy and compartment
+func ListImages(computeClient core.ComputeClient, compartmentId string, compartment string, tenancyName string) {
 	images := fetchImages(computeClient, compartmentId)
+
+	utils.FaintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartment + ")")
 
 	for _, image := range images {
 		fmt.Print("Name: ")

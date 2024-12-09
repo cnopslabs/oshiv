@@ -16,25 +16,26 @@ import (
 
 var bastionCmd = &cobra.Command{
 	Use:   "bastion",
-	Short: "Find, list, and connect via the OCI bastion service",
-	Long:  "TODO",
+	Short: "Find, list, and connect to resources via the OCI bastion service",
+	Long:  "Find, list, and connect to resources via the OCI bastion service",
 	Run: func(cmd *cobra.Command, args []string) {
-		// Lookup tenancy ID and compartment flags, add to Viper config if passed
-		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
-		FlagCompartment := rootCmd.Flags().Lookup("compartment")
-		utils.ConfigInit(FlagTenancyId, FlagCompartment)
-
-		// Get tenancy ID and tenancy name from Viper config
-		tenancyName := viper.GetString("tenancy-name")
-		tenancyId := viper.GetString("tenancy-id")
-		compartmentName := viper.GetString("compartment")
-
 		ociConfig := utils.SetupOciConfig()
 		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(identityErr)
 
+		// Read tenancy ID flag and calculate tenancy
+		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
+		utils.SetTenancyConfig(FlagTenancyId, ociConfig)
+		tenancyId := viper.GetString("tenancy-id")
+		tenancyName := viper.GetString("tenancy-name")
+
+		// Read compartment flag and add to Viper config
+		FlagCompartment := rootCmd.Flags().Lookup("compartment")
 		compartments := resources.FetchCompartments(tenancyId, identityClient)
-		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartmentName)
+		utils.SetCompartmentConfig(FlagCompartment, compartments, tenancyName)
+		compartment := viper.GetString("compartment")
+
+		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartment)
 
 		containerEngineClient, err := containerengine.NewContainerEngineClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(err)
@@ -67,7 +68,7 @@ var bastionCmd = &cobra.Command{
 		flagHostFwPort, _ := cmd.Flags().GetInt("host-fw-port")
 
 		if flagList {
-			resources.ListBastions(bastions, tenancyName, compartmentName)
+			resources.ListBastions(bastions, tenancyName, compartment)
 			os.Exit(0)
 		} else if flagCreate {
 			// Check if there's only one bastion, if so use it (no input required)
@@ -84,7 +85,7 @@ var bastionCmd = &cobra.Command{
 			utils.CheckError(err)
 
 			// Create the bastion session
-			utils.FaintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartmentName + ")")
+			utils.FaintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartment + ")")
 			sessionId := resources.CreateBastionSession(bastionClient, bastionId, flagSessionType, string(publicKeyContent), flagTargetIp, flagSshPort, flagHostFwPort, flagTtl, flagInstanceId, flagSshUser)
 			session := resources.FetchSession(bastionClient, sessionId, flagSessionType)
 
@@ -126,7 +127,6 @@ func init() {
 	defaultPrivateKeyPath := homeDir + "/.ssh/id_rsa"
 	defaultPublicKeyPath := homeDir + "/.ssh/id_rsa.pub"
 
-	// Local flags only exposed to oke command
 	bastionCmd.Flags().BoolP("list", "l", false, "List all bastions")
 
 	bastionCmd.Flags().BoolP("create", "r", true, "Create bastion session")
@@ -134,14 +134,14 @@ func init() {
 
 	// Flags applicable to all session types
 	bastionCmd.Flags().StringP("bastion-id", "b", "", "ID of the bastion to use")    // TODO: Switch to bastion name
-	bastionCmd.Flags().StringP("target-ip", "i", "", "IP of the host to connect to") // TODO: Only require hostname or IP
+	bastionCmd.Flags().StringP("target-ip", "i", "", "IP of the host to connect to") // TODO: Only require one of: (hostname, IP, or instance ID). The lookup the others
 	bastionCmd.Flags().IntP("ttl", "m", 10800, "Bastion session TTL")
 	bastionCmd.Flags().StringP("private-key", "a", defaultPrivateKeyPath, "Path to SSH private key (identity file)")
 	bastionCmd.Flags().StringP("public-key", "e", defaultPublicKeyPath, "Path to SSH public key")
 	bastionCmd.Flags().IntP("ssh-port", "p", 22, "Port to connect to on the remote host")
 
 	// Flags applicable to managed sessions
-	bastionCmd.Flags().StringP("instance-id", "o", "", "The OCID of the instance to connect to") // TODO: Only require hostname or IP
+	bastionCmd.Flags().StringP("instance-id", "o", "", "The OCID of the instance to connect to")
 	bastionCmd.Flags().StringP("user", "u", "opc", "The SSH username to use to connect to an instance")
 
 	// Flags applicable to port forward sessions

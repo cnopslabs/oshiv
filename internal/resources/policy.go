@@ -82,8 +82,6 @@ func fetchPolicies(identityClient identity.IdentityClient, compartmentId string)
 		}
 	}
 
-	fmt.Println("Returned " + strconv.Itoa(pageCount) + "pages")
-
 	return policies
 }
 
@@ -115,7 +113,7 @@ func ListPolicies(identityClient identity.IdentityClient, compartmentId string, 
 
 // Find and print policies (OCI API call)
 func FindPolicies(identityClient identity.IdentityClient, compartmentId string, flagPolicyFind string, flagPolicyFindStatement string, flagPolicyListNameOnly bool) {
-	// TODO: When matching on policy statement, it would probably make more sense to only return the statements with matches as opposed to return all statements
+	// TODO: When matching on policy statement, it would probably make more sense to only return the statements with matches as opposed to returning all statements
 	pattern_name := flagPolicyFind
 	pattern_statement := flagPolicyFindStatement
 
@@ -178,11 +176,12 @@ func FindPolicies(identityClient identity.IdentityClient, compartmentId string, 
 
 	if len(matches) > 0 {
 		matchCount := len(matches)
-		utils.Faint.Println(strconv.Itoa(matchCount) + " matches")
+		utils.Faint.Println(strconv.Itoa(matchCount) + " policy matches")
 
 		for _, policy := range matches {
 			if flagPolicyListNameOnly {
-				fmt.Println(policy.name)
+				// fmt.Print("Name: ")
+				utils.Blue.Println(policy.name)
 			} else {
 				fmt.Print("Name: ")
 				utils.Blue.Println(policy.name)

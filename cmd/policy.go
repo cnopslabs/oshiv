@@ -1,6 +1,3 @@
-/*
-Copyright © 2024 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -13,28 +10,28 @@ import (
 	"github.com/spf13/viper"
 )
 
-// policyCmd represents the policy command
 var policyCmd = &cobra.Command{
 	Use:   "policy",
 	Short: "Find and list policies by name or statement",
-	Long:  "TODO",
+	Long:  "Find and list policies by name or statement",
 	Run: func(cmd *cobra.Command, args []string) {
-		// Lookup tenancy ID and compartment flags and add to Viper config if passed
-		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
-		FlagCompartment := rootCmd.Flags().Lookup("compartment")
-		utils.ConfigInit(FlagTenancyId, FlagCompartment)
-
-		// Get tenancy ID and tenancy name from Viper config
-		tenancyName := viper.GetString("tenancy-name")
-		tenancyId := viper.GetString("tenancy-id")
-		compartmentName := viper.GetString("compartment")
-
 		ociConfig := utils.SetupOciConfig()
 		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
 		utils.CheckError(identityErr)
 
+		// Read tenancy ID flag and calculate tenancy
+		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
+		utils.SetTenancyConfig(FlagTenancyId, ociConfig)
+		tenancyId := viper.GetString("tenancy-id")
+		tenancyName := viper.GetString("tenancy-name")
+
+		// Read compartment flag and add to Viper config
+		FlagCompartment := rootCmd.Flags().Lookup("compartment")
 		compartments := resources.FetchCompartments(tenancyId, identityClient)
-		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartmentName)
+		utils.SetCompartmentConfig(FlagCompartment, compartments, tenancyName)
+		compartment := viper.GetString("compartment")
+
+		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartment)
 
 		flagList, _ := cmd.Flags().GetBool("list")
 		flagFindByName, _ := cmd.Flags().GetString("find-by-name")

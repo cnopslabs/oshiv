@@ -10,6 +10,7 @@ import (
 	"github.com/cnopslabs/oshiv/internal/utils"
 	"github.com/oracle/oci-go-sdk/v65/identity"
 	"github.com/rodaine/table"
+	"github.com/spf13/viper"
 )
 
 // Fetch compartments (names/IDs) from OCI
@@ -88,7 +89,10 @@ func FindCompartments(tenancyId string, tenancyName string, identityClient ident
 // Sets compartment name in Viper config
 func SetCompartmentName(compartmentName string) {
 	utils.Logger.Debug("Setting compartment: " + compartmentName)
-	utils.SetConfigString("compartment-name", compartmentName)
+	viper.Set("compartment-name", compartmentName)
+	// Note: Compartment is the only attribute we persist to files
+	utils.Logger.Debug("Writing config: " + "compartment-name" + ": " + compartmentName)
+	viper.WriteConfig()
 }
 
 // Determine compartment name or ID, lookup name from ID if ID is given

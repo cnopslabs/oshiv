@@ -1,7 +1,9 @@
 // Home dir is used for reading OCI config files and SSH keys
 package utils
 
-import "os"
+import (
+	"os"
+)
 
 func HomeDir() string {
 	homeDir, err := os.UserHomeDir()
