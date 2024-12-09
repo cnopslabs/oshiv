@@ -86,7 +86,14 @@ var bastionCmd = &cobra.Command{
 
 			// Create the bastion session
 			utils.FaintMagenta.Println("Tenancy(Compartment): " + tenancyName + "(" + compartment + ")")
-			sessionId := resources.CreateBastionSession(bastionClient, bastionId, flagSessionType, string(publicKeyContent), flagTargetIp, flagSshPort, flagHostFwPort, flagTtl, flagInstanceId, flagSshUser)
+
+			var sessionId *string
+			if flagOkeName != "" {
+				sessionId = resources.CreateBastionSession(bastionClient, bastionId, flagSessionType, string(publicKeyContent), flagTargetIp, flagSshPort, 6443, flagTtl, flagInstanceId, flagSshUser)
+			} else {
+				sessionId = resources.CreateBastionSession(bastionClient, bastionId, flagSessionType, string(publicKeyContent), flagTargetIp, flagSshPort, flagHostFwPort, flagTtl, flagInstanceId, flagSshUser)
+			}
+
 			session := resources.FetchSession(bastionClient, sessionId, flagSessionType)
 
 			// Wait until session is active
@@ -109,6 +116,7 @@ var bastionCmd = &cobra.Command{
 				if flagOkeName != "" {
 					// If creating bastion session to an OKE cluster, lookup cluster ID and set ports to 6443
 					flagOkeId := resources.FetchClusterId(containerEngineClient, compartmentId, flagOkeName)
+					fmt.Println("flagOkeId")
 					resources.PrintPortFwSshCommands(bastionClient, sessionId, flagTargetIp, flagSshPort, flagSshPrivateKey, 6443, 6443, flagOkeId)
 				} else {
 					resources.PrintPortFwSshCommands(bastionClient, sessionId, flagTargetIp, flagSshPort, flagSshPrivateKey, flagLocalFwPort, flagHostFwPort, "")

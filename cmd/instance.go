@@ -42,11 +42,12 @@ var instanceCmd = &cobra.Command{
 
 		flagList, _ := cmd.Flags().GetBool("list")
 		flagFind, _ := cmd.Flags().GetString("find")
+		flagDisplayImageDetails, _ := cmd.Flags().GetBool("image-details")
 
 		if flagList {
-			resources.ListInstances(computeClient, compartmentId, vnetClient, compartment, tenancyName)
+			resources.ListInstances(computeClient, compartmentId, vnetClient, flagDisplayImageDetails, compartment, tenancyName)
 		} else if flagFind != "" {
-			resources.FindInstances(computeClient, vnetClient, compartmentId, flagFind, true, compartment, tenancyName)
+			resources.FindInstances(computeClient, vnetClient, compartmentId, flagFind, flagDisplayImageDetails, compartment, tenancyName)
 		} else {
 			fmt.Println("Invalid flag or flag arguments")
 		}
@@ -56,7 +57,7 @@ var instanceCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(instanceCmd)
 
-	// TODO: Implement list vs. list-all (with image info)
 	instanceCmd.Flags().BoolP("list", "l", false, "List all instances")
 	instanceCmd.Flags().StringP("find", "f", "", "Find instance by name pattern search")
+	instanceCmd.Flags().BoolP("image-details", "i", false, "Display image details")
 }
