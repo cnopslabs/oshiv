@@ -1,5 +1,5 @@
 OUT := oshiv
-PKG := github.com/dnlloyd/oshiv
+PKG := github.com/cnopslabs/oshiv
 VERSION := $(shell git describe --always)
 PKG_LIST := $(shell go list ${PKG}/... | grep -v /vendor/)
 GO_FILES := $(shell find . -name '*.go' | grep -v /vendor/)

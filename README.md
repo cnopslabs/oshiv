@@ -1,5 +1,5 @@
 # OCI Shiv
-A tool for quickly finding OCI resources and connecting to instances and OKE clusters.
+A tool for quickly finding OCI resources and connecting to instances and OKE clusters via the bastion service.
 
 ## Quick examples
 
@@ -8,7 +8,7 @@ A tool for quickly finding OCI resources and connecting to instances and OKE clu
 Search for instances
 
 ```
-oshiv -f foo-node
+oshiv inst -f foo-node
 ```
 ```
 Name: my-foo-node-1
@@ -23,7 +23,7 @@ Private IP: 123.456.789.6
 Connect via bastion service
 
 ```
-oshiv -i 123.456.789.5 -o ocid1.instance.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
+oshiv bastion -i 123.456.789.5 -o ocid1.instance.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
 ```
 
 **Finding and connecting to Kubernetes clusters**
@@ -43,7 +43,7 @@ Private endpoint port: 6443
 Connect via bastion service
 
 ```
-oshiv -i 123.456.789.7 -oke ocid1.cluster.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
+oshiv bastion -y port-forward -k oke-my-foo-cluster -i 123.456.789.7
 ```
 
 ## Install
@@ -96,20 +96,20 @@ oshiv -h
 
 ### Prerequisites
 
-#### 1. OCI Authentication
+#### 1. OCI authentication and authorization
 
-oshiv will use the credentials set in `$HOME/.oci/config`
-oshiv will use the profile set by the `OCI_CLI_PROFILE` environment variable
-If the `OCI_CLI_PROFILE` environment variable is not set it will use the DEFAULT profile
+`oshiv` utilizes the OCI CLI for OCI authentication and authorization. See [Installing the CLI](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm#Quickstart).
 
-*(optional)*
+`oshiv` will use the credentials set in `$HOME/.oci/config` and the OCI profile set by the `OCI_CLI_PROFILE` environment variable. If the `OCI_CLI_PROFILE` environment variable is not set it will use the DEFAULT profile.
+
 ```
 export OCI_CLI_PROFILE=MYCUSTOMPROFILE
 ```
 
-#### 2. OCI Tenancy Override
+#### 2. OCI Tenancy
 
-oshiv will attempt to determine tenancy in this order:
+`oshiv` will attempt to determine tenancy in this order:
+
 1. Attempt to get tenancy ID from `OCI_CLI_TENANCY` environment variable. (E.g. `export OCI_CLI_TENANCY=ocid1.tenancy.oc2..`)
 
 2. Attempt to get tenancy ID from `-t` flag
@@ -127,11 +127,11 @@ By default, `oshiv` uses the following keys:
 - `$HOME/.ssh/id_rsa`
 - `$HOME/.ssh/id_rsa.pub`
 
-These can be overriden by flags. See `oshiv -h`
+These can be overridden by flags. See `oshiv bastion -h`
 
 #### 2. SSH user
 
-By default, `oshiv` uses the `opc` user. This can be overriden by flags. See `oshiv -h`
+By default, `oshiv` uses the `opc` user. This can be overriden by flags. See `oshiv bastion -h`
 
 #### 3. SSH port
 
@@ -141,30 +141,30 @@ By default, `oshiv` uses port `22` user. This can be overriden by flags. See `os
 
 ### Common usage patterns
 
-1. List compartments for tenancy
+List compartments
 
 ```
-oshiv -lc
+oshiv compart -l
 
 COMPARTMENTS:
 fakecompartment1
 dummycompartment2
 mycompartment
 
-To set compartment, you can export OCI_COMPARTMENT_NAME:
-   export OCI_COMPARTMENT_NAME=
+To set compartment, run:
+   oshiv compartment -s COMPARTMENT_NAME
 ```
 
-2. Set compartment
+Set compartment
 
 ```
-export OCI_COMPARTMENT_NAME=mycompartment
+oshiv compartment -s MyFooCompartment
 ```
 
-3. Find instance(s)
+Find instance
 
 ```
-oshiv -f mydatabase
+oshiv inst -f mydatabase
 
 Name: mydatabase-1
 Instance ID: ocid1.instance.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
@@ -175,31 +175,13 @@ Instance ID: ocid1.instance.oc2.us-luke-1.bacdefghijklmnopqrstuvwxyz
 Private IP: 123.456.789.6
 ```
 
-4. List bastions
+Create bastion session to connect to instance
 
 ```
-oshiv -lb
-
-Bastions in compartment mycompartment
-mybastion-1
-
-To set bastion name, you can export OCI_BASTION_NAME:
-   export OCI_BASTION_NAME=
+oshiv inst -i 123.456.789.5 -o ocid1.instance.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
 ```
 
-5. Set bastion
-
-```
-export OCI_BASTION_NAME=mybastion-1
-```
-
-6. Create bastion session to connect to instance
-
-```
-oshiv -i 123.456.789.5 -o ocid1.instance.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
-```
-
-7. Connect to instance
+Connect to instance
 
 `oshiv` will produce various SSH commands to connect to your instance
 
@@ -221,10 +203,14 @@ ssh -i /Users/myuser/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFi
 -P 22 opc@123.456.789.5
 ```
 
-8. Create bastion session to connect to OKE cluster
+Or find OKE cluster and create bastion session to connect to the Kubernetes API
 
 ```
-oshiv -i 123.456.789.5 -oke ocid1.cluster.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
+oshiv oke -f oke-my-foo-cluster
+```
+
+```
+oshiv bastion -y port-forward -k oke-my-foo-cluster -i 123.456.789.7
 ```
 
 7. Connect to cluster
@@ -253,13 +239,18 @@ sudo ssh -i "/Users/myuser/.ssh/id_rsa" \
 -P 22 opc@123.456.789.5 -N -L 5902:123.456.789.5:5902
 ```
 
-Now you should be able to connect (via localhost) using a VNC client. For MacOS, I recommend [TigerVNC](https://tigervnc.org/) but the built-in VNC client will work as well.
+Now you should be able to connect (via localhost) using a VNC client. 
+
+For MacOS, I recommend [TigerVNC](https://tigervnc.org/) but the built-in VNC client will work as well.
 
 ```
-vnc://localhost:5902
+localhost:5902
 ```
 
-![mac-vnc-connect-to-server.jpg](mac-vnc-connect-to-server.jpg)
+![Tiger VNC](tiger-vnc.png)
+
+![VNC native on Mac OS](mac-vnc-connect-to-server.jpg)
+
 #### RDP (Windows)
 
 ```
@@ -271,7 +262,6 @@ sudo ssh -i "/Users/myuser/.ssh/id_rsa" \
 
 Now you should be able to connect via localhost with an RDP client
 
-
 ### Help (all options)
 
 ```
@@ -279,110 +269,30 @@ oshiv -h
 ```
 
 ```
-OCI authentication:
-This tool will use the OCI configuration at $HOME/.oci/config
-This tool will use the profile set by the OCI_CLI_PROFILE environment variable
-If the OCI_CLI_PROFILE environment variable is not set it will use the DEFAULT profile
+A tool for finding and connecting to OCI resources
 
-Environment variables:
-The following environment variables will override their flag counterparts
-   OCI_CLI_TENANCY
-   OCI_COMPARTMENT_NAME
-   OCI_BASTION_NAME
+Usage:
+  oshiv [flags]
+  oshiv [command]
 
-Defaults:
-   SSH private key (-k): $HOME/.ssh/id_rsa
-   SSH public key (-e): $HOME/.ssh/id_rsa.pub
-   SSH user (-u): opc
+Available Commands:
+  bastion     Find, list, and connect to resources via the OCI bastion service
+  compartment Find and list compartments
+  completion  Generate the autocompletion script for the specified shell
+  config      Display oshiv configuration
+  help        Help about any command
+  image       Find and list OCI compute images
+  instance    Find and list OCI instances
+  oke         Find and list OKE clusters
+  policy      Find and list policies by name or statement
+  subnet      Find and list subnets
 
-Common command patterns:
-List compartments
-   oshiv -lc
+Flags:
+  -c, --compartment string   The name of the compartment to use
+  -h, --help                 help for oshiv
+  -t, --tenancy-id string    Override's the default tenancy with this tenancy ID
 
-List bastions
-   oshiv -lb
-
-Create bastion session
-   oshiv -i ip_address -o instance_id
-
-List active sessions
-   oshiv -ls
-
-Connect to an active session
-   oshiv -s session_ocd
-
-Create bastion session (all flags)
-   oshiv -t tenant_id -c compartment_name -b bastion_name -i ip_address -o instance_id -k path_to_ssh_private_key -e path_to_ssh_public_key -u cloud-user
-
-All flags for oshiv:
-  -b string
-    	bastion name
-  -c string
-    	compartment name
-  -e string
-    	path to SSH public key
-  -f string
-    	search string to search for instance
-  -fi string
-    	search string to search for instance and return image info
-  -fw
-    	Create an SSH port forward session
-  -i string
-    	IP address of host/endpoint to connect to
-  -k string
-    	path to SSH private key (identity file)
-  -l int
-    	Session TTL (seconds) (default 10800)
-  -lb
-    	list bastions
-  -lc
-    	list compartments
-  -ls
-    	list sessions
-  -o string
-    	instance ID of host to connect to
-  -oke string
-    	OKE cluster ID
-  -p int
-    	SSH port (default 22)
-  -s string
-    	Session ID to check for
-  -t string
-    	tenancy ID name
-  -tp int
-    	SSH tunnel port
-  -tpl int
-    	SSH tunnel local port override
-  -u string
-    	SSH user (default "opc")
-  -v	Show version
-
-Subcommands:
-compute
-  -l	List all instances
-
-image
-  -f string
-      Find images by search pattern
-  -l	List all images
-
-subnet
-  -f string
-      Find subnets by search pattern
-  -l	List all subnets
-
-policy
-  -f string
-      Find policies by name search pattern
-  -fs string
-      Find policy by statement search pattern
-  -l List all policies
-  -n Print only policy names (no statements)
-
-compart
-   -f
-      Find compartments by search pattern
-   -l List all compartments
+Use "oshiv [command] --help" for more information about a command.
 ```
 
 ## Contribute
