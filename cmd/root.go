@@ -11,10 +11,10 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "oshiv",
-	Short: "A tool for finding and connecting to OCI resources",
-	Long:  "A tool for finding OCI resources and for connecting to instances and OKE clusters via the OCI bastion service.",
+	Short: "A tool for finding and connecting to OCI resources via the bastion service",
+	Long:  "A tool for finding and connecting to OCI resources via the bastion service",
 	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Maybe add version here. Need to research how cmd handles version
+		// TODO: Maybe add version here. Need to research how `cmd` handles version
 	},
 }
 
