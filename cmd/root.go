@@ -30,8 +30,8 @@ func Execute() {
 	utils.ConfigFileRead()
 
 	// 3. Get tenancy ID from OCI config file and set as the default (lowest precedence order) in viper config
-	ociConfig := utils.SetupOciConfig()
-	ociConfigTenancyId, err_config := ociConfig.TenancyOCID()
+	ociConfigTenancyId, err_config := utils.OciConfig().TenancyOCID()
+
 	utils.CheckError(err_config)
 	viper.SetDefault("tenancy-id", ociConfigTenancyId)
 

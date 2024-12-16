@@ -1,4 +1,4 @@
-// Home dir is used for reading OCI config files and SSH keys
+// Home dir is used for reading OCI config file and SSH keys
 package utils
 
 import (

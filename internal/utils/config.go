@@ -8,6 +8,7 @@ import (
 
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/identity"
+	"github.com/rodaine/table"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
@@ -17,7 +18,18 @@ type Config struct {
 	Compartment string `yaml:"compartment"`
 }
 
-var configFilePath string = filepath.Join(HomeDir(), ".oshiv")
+type OciTenancyEnvironment struct {
+	Environment  string `json:"compartment"`
+	Tenancy      string `json:"tenancy"`
+	Realm        string `json:"realm"`
+	Compartments string `json:"compartments"`
+	Regions      string `json:"regions"`
+}
+
+// Setting location of .oshiv config file to ${HOME}/.oci/sessions/${OCI_PROFILE}/.oshiv
+// Note: ${HOME}/.oci/sessions/${OCI_PROFILE} is the convention for OCI CLI
+var configFilePath string = filepath.Join(HomeDir(), ".oci", "sessions", OciProfile(), ".oshiv")
+var tenancyMapPath string = filepath.Join(HomeDir(), ".oci", "tenancy-map.yaml")
 
 // Create config file if it doesn't exist
 func ConfigFileInit() {
@@ -30,16 +42,6 @@ func ConfigFileInit() {
 		_, err_create := os.Create(configFilePath)
 		CheckError(err_create)
 	}
-}
-
-// Validate tenancy ID using the OCI API and lookup/return tenancy name
-func validateTenancyId(identityClient identity.IdentityClient, tenancyId string) string {
-	response, err := identityClient.GetTenancy(context.Background(), identity.GetTenancyRequest{TenancyId: &tenancyId})
-	CheckError(err)
-
-	Logger.Debug("Current tenancy", "response.Tenancy.Name", *response.Tenancy.Name)
-	tenancyName := *response.Tenancy.Name
-	return tenancyName
 }
 
 // Load config file into Viper config
@@ -58,6 +60,16 @@ func ConfigFileRead() {
 	} else {
 		Logger.Debug("Using oshiv config file", "File", viper.ConfigFileUsed())
 	}
+}
+
+// Validate tenancy ID using the OCI API and lookup/return tenancy name
+func validateTenancyId(identityClient identity.IdentityClient, tenancyId string) string {
+	response, err := identityClient.GetTenancy(context.Background(), identity.GetTenancyRequest{TenancyId: &tenancyId})
+	CheckError(err)
+
+	Logger.Debug("Current tenancy", "response.Tenancy.Name", *response.Tenancy.Name)
+	tenancyName := *response.Tenancy.Name
+	return tenancyName
 }
 
 // Reset config file and wite compartment to file
@@ -131,4 +143,28 @@ func validateCompartment(compartment string, compartments map[string]string) boo
 	}
 
 	return compartmentIsValid
+}
+
+func PrintTenancyMap() {
+	var ociTenancyEnvironments []OciTenancyEnvironment
+	_, err_stat := os.Stat(tenancyMapPath)
+
+	if err_stat == nil {
+		yamlFile, err := os.ReadFile(tenancyMapPath)
+		CheckError(err)
+
+		err = yaml.Unmarshal(yamlFile, &ociTenancyEnvironments)
+		CheckError(err)
+
+		tbl := table.New("ENVIRONMENT", "TENANCY", "REALM", "COMPARTMENTS", "REGIONS")
+		tbl.WithHeaderFormatter(HeaderFmt).WithFirstColumnFormatter(ColumnFmt)
+
+		for _, env := range ociTenancyEnvironments {
+			tbl.AddRow(env.Environment, env.Tenancy, env.Realm, env.Compartments, env.Regions)
+		}
+
+		tbl.Print()
+	} else {
+		fmt.Println("No tenancy info file found.")
+	}
 }

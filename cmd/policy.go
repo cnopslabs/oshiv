@@ -15,13 +15,12 @@ var policyCmd = &cobra.Command{
 	Short: "Find and list policies by name or statement",
 	Long:  "Find and list policies by name or statement",
 	Run: func(cmd *cobra.Command, args []string) {
-		ociConfig := utils.SetupOciConfig()
-		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
+		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(identityErr)
 
 		// Read tenancy ID flag and calculate tenancy
 		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
-		utils.SetTenancyConfig(FlagTenancyId, ociConfig)
+		utils.SetTenancyConfig(FlagTenancyId, utils.OciConfig())
 		tenancyId := viper.GetString("tenancy-id")
 		tenancyName := viper.GetString("tenancy-name")
 

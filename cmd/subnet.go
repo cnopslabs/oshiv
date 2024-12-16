@@ -16,13 +16,12 @@ var subnetCmd = &cobra.Command{
 	Short: "Find and list subnets",
 	Long:  "Find and list subnets",
 	Run: func(cmd *cobra.Command, args []string) {
-		ociConfig := utils.SetupOciConfig()
-		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
+		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(identityErr)
 
 		// Read tenancy ID flag and calculate tenancy
 		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
-		utils.SetTenancyConfig(FlagTenancyId, ociConfig)
+		utils.SetTenancyConfig(FlagTenancyId, utils.OciConfig())
 		tenancyId := viper.GetString("tenancy-id")
 		tenancyName := viper.GetString("tenancy-name")
 
@@ -34,7 +33,7 @@ var subnetCmd = &cobra.Command{
 
 		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartment)
 
-		vnetClient, err := core.NewVirtualNetworkClientWithConfigurationProvider(ociConfig)
+		vnetClient, err := core.NewVirtualNetworkClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(err)
 
 		flagList, _ := cmd.Flags().GetBool("list")

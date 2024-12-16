@@ -19,13 +19,12 @@ var bastionCmd = &cobra.Command{
 	Short: "Find, list, and connect to resources via the OCI bastion service",
 	Long:  "Find, list, and connect to resources via the OCI bastion service",
 	Run: func(cmd *cobra.Command, args []string) {
-		ociConfig := utils.SetupOciConfig()
-		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
+		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(identityErr)
 
 		// Read tenancy ID flag and calculate tenancy
 		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
-		utils.SetTenancyConfig(FlagTenancyId, ociConfig)
+		utils.SetTenancyConfig(FlagTenancyId, utils.OciConfig())
 		tenancyId := viper.GetString("tenancy-id")
 		tenancyName := viper.GetString("tenancy-name")
 
@@ -37,10 +36,10 @@ var bastionCmd = &cobra.Command{
 
 		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartment)
 
-		containerEngineClient, err := containerengine.NewContainerEngineClientWithConfigurationProvider(ociConfig)
+		containerEngineClient, err := containerengine.NewContainerEngineClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(err)
 
-		bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(ociConfig)
+		bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(err)
 
 		bastions := resources.FetchBastions(compartmentId, bastionClient)

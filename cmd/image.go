@@ -17,13 +17,12 @@ var imageCmd = &cobra.Command{
 	Long:    "Find and list OCI compute images",
 	Aliases: []string{"img"},
 	Run: func(cmd *cobra.Command, args []string) {
-		ociConfig := utils.SetupOciConfig()
-		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
+		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(identityErr)
 
 		// Read tenancy ID flag and calculate tenancy
 		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
-		utils.SetTenancyConfig(FlagTenancyId, ociConfig)
+		utils.SetTenancyConfig(FlagTenancyId, utils.OciConfig())
 		tenancyId := viper.GetString("tenancy-id")
 		tenancyName := viper.GetString("tenancy-name")
 
@@ -35,7 +34,7 @@ var imageCmd = &cobra.Command{
 
 		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartment)
 
-		computeClient, err := core.NewComputeClientWithConfigurationProvider(ociConfig)
+		computeClient, err := core.NewComputeClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(err)
 
 		flagList, _ := cmd.Flags().GetBool("list")
