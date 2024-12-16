@@ -1,0 +1,30 @@
+---
+- environment: Foo prod
+  tenancy: production
+  realm: OC1
+  compartments: observability control-plane data-plane
+  regions: us-ashburn-1 us-phoenix-1
+
+- environment: Bar prod
+  tenancy: production
+  realm: OC1
+  compartments: control-plane data-plane
+  regions: us-ashburn-1 us-phoenix
+
+- environment: Foo Staging
+  tenancy: staging
+  realm: OC1
+  compartments: observability control-plane data-plane
+  regions: us-chicago-1 
+
+- environment: Foo Dev
+  tenancy: development
+  realm: OC1
+  compartments: control-plane data-plane
+  regions: us-chicago-1 
+
+- environment: Foo Gov
+  tenancy: production-gov
+  realm: OC2
+  compartments: observability control-plane data-plane
+  regions: us-luke-1 
