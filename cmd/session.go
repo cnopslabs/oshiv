@@ -17,13 +17,12 @@ var sessionCmd = &cobra.Command{
 	Short: "List bastion sessions",
 	Long:  "List bastion sessions",
 	Run: func(cmd *cobra.Command, args []string) {
-		ociConfig := utils.SetupOciConfig()
-		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
+		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(identityErr)
 
 		// Read tenancy ID flag and calculate tenancy
 		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
-		utils.SetTenancyConfig(FlagTenancyId, ociConfig)
+		utils.SetTenancyConfig(FlagTenancyId, utils.OciConfig())
 		tenancyId := viper.GetString("tenancy-id")
 		tenancyName := viper.GetString("tenancy-name")
 
@@ -35,7 +34,7 @@ var sessionCmd = &cobra.Command{
 
 		compartmentId := resources.LookupCompartmentId(compartments, tenancyId, tenancyName, compartment)
 
-		bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(ociConfig)
+		bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(err)
 
 		bastions := resources.FetchBastions(compartmentId, bastionClient)

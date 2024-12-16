@@ -16,17 +16,15 @@ var compartmentCmd = &cobra.Command{
 	Long:    "Find and list compartments",
 	Aliases: []string{"compart"},
 	Run: func(cmd *cobra.Command, args []string) {
-		ociConfig := utils.SetupOciConfig()
-
 		// Read tenancy ID flag and calculate tenancy
 		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
-		utils.SetTenancyConfig(FlagTenancyId, ociConfig)
+		utils.SetTenancyConfig(FlagTenancyId, utils.OciConfig())
 
 		// Get tenancy ID and tenancy name from Viper config
 		tenancyName := viper.GetString("tenancy-name")
 		tenancyId := viper.GetString("tenancy-id")
 
-		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(ociConfig)
+		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(identityErr)
 
 		compartments := resources.FetchCompartments(tenancyId, identityClient)
