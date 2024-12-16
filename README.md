@@ -282,6 +282,7 @@ Available Commands:
   config      Display oshiv configuration
   help        Help about any command
   image       Find and list OCI compute images
+  info        Display your custom OCI tenancy information
   instance    Find and list OCI instances
   oke         Find and list OKE clusters
   policy      Find and list policies by name or statement
@@ -294,6 +295,13 @@ Flags:
 
 Use "oshiv [command] --help" for more information about a command.
 ```
+
+### Info
+
+The `info` command displays custom tenancy info that you define in your tenancy info file located at `$HOME/.oci/tenancy-map.yaml`. This is helpful to quickly display the tenancy and compartment info necessary to run most oshiv commands.
+
+[tenancy-map.yaml example](examples/tenancy-map.yml)
+
 
 ## Contribute
 
