@@ -137,8 +137,20 @@ func init() {
 	rootCmd.AddCommand(bastionCmd)
 
 	homeDir := utils.HomeDir()
-	defaultPrivateKeyPath := homeDir + "/.ssh/id_rsa"
-	defaultPublicKeyPath := homeDir + "/.ssh/id_rsa.pub"
+	// If OSHIV_SSH_HOME is set, we'll use this location for the SSH keys
+	sshKeyHomeEnv := os.Getenv("OSHIV_SSH_HOME")
+	var sshKeyHome string
+
+	if sshKeyHomeEnv == "" {
+		// Use default SSH keys location
+		sshKeyHome = homeDir + "/.ssh"
+	} else {
+		// Use custom SSH keys location
+		sshKeyHome = sshKeyHomeEnv
+	}
+
+	defaultPrivateKeyPath := sshKeyHome + "/id_rsa"
+	defaultPublicKeyPath := sshKeyHome + "/id_rsa.pub"
 
 	bastionCmd.Flags().BoolP("list", "l", false, "List all bastions")
 

@@ -122,12 +122,21 @@ Patterns `#1` and `#2` above allow you to override your default tenancy.
 
 #### 1. SSH keys
 
-By default, `oshiv` uses the following keys: 
+By default, `oshiv` looks for the `id_rsa` and `id_rsa.pub` key pair in `$HOME/.ssh`. You can override the directory of your `id_rsa` and `id_rsa.pub` key pair by setting the `OSHIV_SSH_HOME` environment variable. 
 
-- `$HOME/.ssh/id_rsa`
-- `$HOME/.ssh/id_rsa.pub`
+Example: 
 
-These can be overridden by flags. See `oshiv bastion -h`
+```
+export OSHIV_SSH_HOME=$HOME/.ssh/oshiv
+ssh-keygen -t rsa -b 4096 -C "oshiv@oraclecloud.com" -f $OSHIV_SSH_HOME/id_rsa
+```
+
+Individual keys can be overwritten by passing the the following flags:
+
+- `-a`, `--private-key` Path to SSH private key (identity file)
+- `-e`, `--public-key` Path to SSH public key
+
+See `oshiv bastion -h` for more detail.
 
 #### 2. SSH user
 
