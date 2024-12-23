@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v1.0.0)'
+        required: true
+        default: ''
+
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.23
+
+      - name: Install dependencies
+        run: go mod tidy
+
+      - name: Verify tag exists
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          if ! git rev-parse "${{ github.event.inputs.tag }}" >/dev/null 2>&1; then
+            echo "Tag ${{ github.event.inputs.tag }} does not exist!"
+            exit 1
+          fi
+        shell: bash
+
+      - name: Checkout tag
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: git checkout ${{ github.event.inputs.tag }}
+
+      - name: Run staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest && staticcheck ./...
+
+      - name: Run vet
+        run: go vet ./...
+
+      - name: Build and release binaries
+        run: |
+          make clean
+          make release
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-binaries
+          path: website/oshiv/downloads/
+
+      # Step: Create a GitHub Release and upload binaries
+      - name: Upload to GitHub Releases
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: website/oshiv/downloads/**/*.zip
+          asset_name: oshiv_${{ github.ref_name }}_binaries.zip
+          asset_content_type: application/zip
