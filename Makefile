@@ -5,6 +5,15 @@ VERSION := $(shell git describe --always)
 OUTPUT_DIR := build
 PLATFORMS := darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 linux/amd64 linux/arm64
 
+# Determine GOOS and GOARCH
+ifeq ($(OS),Windows_NT)
+	GOOS_COMPILE := windows
+else
+	GOOS_COMPILE := $(shell uname -s | tr '[:upper:]' '[:lower:]')
+endif
+
+GOARCH_COMPILE := $(shell uname -m | sed -e 's/x86_64/amd64/' -e 's/i[3-6]86/386/')
+
 # Build Targets
 .PHONY: all build release clean vet staticcheck compile zip test check-env
 
@@ -33,15 +42,6 @@ staticcheck:
 	@echo "Running staticcheck..."
 	@go install honnef.co/go/tools/cmd/staticcheck@latest
 	@staticcheck ./...
-
-# Detect OS for Windows and set appropriate GOOS and GOARCH
-ifeq ($(OS),Windows_NT)
-	GOOS_COMPILE := windows
-else
-	GOOS_COMPILE := $(shell uname -s | tr '[:upper:]' '[:lower:]')
-endif
-
-GOARCH_COMPILE := $(shell uname -m | sed -e 's/x86_64/amd64/' -e 's/i[3-6]86/386/')
 
 # Install local binary
 install-local:
