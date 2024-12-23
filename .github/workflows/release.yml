@@ -51,16 +51,15 @@ jobs:
       - name: Install dependencies
         run: go mod tidy
 
-      - name: Build and package binaries
+      - name: Build binary for native platform
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
           make clean
-          make release
+          make install-local
 
-      - name: Upload release assets
-        uses: actions/upload-artifact@v3
-        with:
-          name: release-binaries
-          path: build/
+      - name: Compress binary
+        run: zip build/oshiv_${{ github.ref_name }}_${{ matrix.os }}.zip build/*
 
       - name: Create GitHub Release
         id: create_release
@@ -76,10 +75,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload binary assets to release
+      - name: Upload binary asset to release
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: build/
-          asset_name: oshiv_${{ github.ref_name }}_binaries.zip
+          asset_name: oshiv_${{ github.ref_name }}_${{ matrix.os }}.zip
           asset_content_type: application/zip
