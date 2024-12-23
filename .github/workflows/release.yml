@@ -24,36 +24,27 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Set up Git
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            git fetch --all
+            git checkout ${{ github.event.inputs.tag }}
+          fi
 
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: 1.23
 
+      - name: Verify environment
+        run: make check-env
+
       - name: Install dependencies
         run: go mod tidy
 
-      - name: Verify tag exists
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        run: |
-          if ! git rev-parse "${{ github.event.inputs.tag }}" >/dev/null 2>&1; then
-            echo "Tag ${{ github.event.inputs.tag }} does not exist!"
-            exit 1
-          fi
-        shell: bash
-
-      - name: Checkout tag
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        run: git checkout ${{ github.event.inputs.tag }}
-
-      - name: Run staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@latest && staticcheck ./...
-
-      - name: Run vet
-        run: go vet ./...
-
-      - name: Build and release binaries
+      - name: Build and package binaries
         run: |
           make clean
           make release
@@ -62,13 +53,26 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: release-binaries
-          path: website/oshiv/downloads/
+          path: build/
 
-      # Step: Create a GitHub Release and upload binaries
-      - name: Upload to GitHub Releases
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          body: |
+            Release ${{ github.ref_name }} with pre-built binaries.
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload binary assets to release
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: website/oshiv/downloads/**/*.zip
+          asset_path: build/
           asset_name: oshiv_${{ github.ref_name }}_binaries.zip
           asset_content_type: application/zip
