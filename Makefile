@@ -34,13 +34,23 @@ staticcheck:
 	@go install honnef.co/go/tools/cmd/staticcheck@latest
 	@staticcheck ./...
 
+# Detect OS for Windows and set appropriate GOOS and GOARCH
+ifeq ($(OS),Windows_NT)
+	GOOS_COMPILE := windows
+else
+	GOOS_COMPILE := $(shell uname -s | tr '[:upper:]' '[:lower:]')
+endif
+
+GOARCH_COMPILE := $(shell uname -m | sed -e 's/x86_64/amd64/' -e 's/i[3-6]86/386/')
+
 # Install local binary
 install-local:
 	@echo "Installing local binary..."
 	@mkdir -p $(OUTPUT_DIR) # Ensure the output directory exists
-	GOOS=$(shell uname -s | tr '[:upper:]' '[:lower:]') \
-	GOARCH=$(shell uname -m | sed -e 's/x86_64/amd64/' -e 's/i[3-6]86/386/') \
-	go build -v -ldflags="-X main.version=$(VERSION)" -o $(OUTPUT_DIR)/$(APP_NAME)_$(VERSION)_$(shell uname -s | tr '[:upper:]' '[:lower:]')_$(shell uname -m | sed -e 's/x86_64/amd64/' -e 's/i[3-6]86/386/')
+	GOOS=$(GOOS_COMPILE) \
+	GOARCH=$(GOARCH_COMPILE) \
+	go build -v -ldflags="-X main.version=$(VERSION)" \
+	-o $(OUTPUT_DIR)/$(APP_NAME)_$(VERSION)_$(GOOS_COMPILE)_$(GOARCH_COMPILE)
 
 # Compile binaries for multiple platforms
 compile:
