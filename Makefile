@@ -14,6 +14,9 @@ endif
 
 GOARCH_COMPILE := $(shell uname -m | sed -e 's/x86_64/amd64/' -e 's/i[3-6]86/386/')
 
+# Build Flags
+LDFLAGS := "-X $(PKG)/cmd.version=$(VERSION)"
+
 # Build Targets
 .PHONY: all build release clean vet staticcheck compile zip test check-env
 
@@ -49,7 +52,7 @@ install-local:
 	@mkdir -p $(OUTPUT_DIR)
 	GOOS=$(GOOS_COMPILE) \
 	GOARCH=$(GOARCH_COMPILE) \
-	go build -v -ldflags="-X cmd.version=$(VERSION)" \
+	go build -v -ldflags=$(LDFLAGS) \
 	-o $(OUTPUT_DIR)/$(APP_NAME)_$(VERSION)_$(GOOS_COMPILE)_$(GOARCH_COMPILE)
 
 # Compile binaries for multiple platforms
@@ -59,7 +62,7 @@ compile:
 	$(foreach platform, $(PLATFORMS), \
 		$(eval os_arch = $(subst /, ,$(platform))) \
 		GOOS=$(word 1,${os_arch}) GOARCH=$(word 2,${os_arch}) \
-		go build -v -ldflags="-X cmd.version=$(VERSION)" \
+		go build -v -ldflags=$(LDFLAGS) \
 		-o $(OUTPUT_DIR)/$(APP_NAME)_$(VERSION)_$(word 1,${os_arch})_$(word 2,${os_arch});)
 
 # Zip compiled binaries
