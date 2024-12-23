@@ -3,8 +3,8 @@ PKG := github.com/cnopslabs/oshiv
 VERSION := $(shell git describe --always)
 PKG_LIST := $(shell go list ${PKG}/... | grep -v /vendor/)
 GO_FILES := $(shell find . -name '*.go' | grep -v /vendor/)
-OS := $(shell uname -s | awk '{print tolower($0)}')
-ARCH := $(shell uname -m)
+OS := $(shell uname -s | tr '[:upper:]' '[:lower:]') # Use `tr` to convert OS name to lowercase
+ARCH := $(shell uname -m | sed -e 's/x86_64/amd64/') # Normalize architecture for Go
 
 # Targets
 .PHONY: build release clean vet staticcheck install-local compile zip html
