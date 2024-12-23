@@ -48,7 +48,7 @@ staticcheck:
 
 # Install local binary
 install-local:
-	@echo "Installing local binary..."
+	@echo "Installing local binary for native platform..."
 	@mkdir -p $(OUTPUT_DIR)
 	GOOS=$(GOOS_COMPILE) \
 	GOARCH=$(GOARCH_COMPILE) \
