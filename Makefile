@@ -18,7 +18,7 @@ GOARCH_COMPILE := $(shell uname -m | sed -e 's/x86_64/amd64/' -e 's/i[3-6]86/386
 LDFLAGS := "-X $(PKG)/cmd.version=$(VERSION)"
 
 # Build Targets
-.PHONY: all build release clean vet staticcheck compile zip test check-env
+.PHONY: all build release clean vet staticcheck compile zip test check-env html
 
 # Default target
 all: build
@@ -81,3 +81,6 @@ check-env:
 	@command -v go >/dev/null 2>&1 || { echo >&2 "Go is not installed. Aborting."; exit 1; }
 	@command -v staticcheck >/dev/null 2>&1 || { echo >&2 "Staticcheck is not installed. Run 'make staticcheck' to install it."; exit 1; }
 	@command -v zip >/dev/null 2>&1 || { echo >&2 "Zip is not installed. Aborting."; exit 1; }
+
+html:
+	cd website/oshiv; go run renderhtml.go ${VERSION} index.tmpl; cd ..
