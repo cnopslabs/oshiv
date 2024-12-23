@@ -1,7 +1,7 @@
 # Application Details
 APP_NAME := oshiv
 PKG := github.com/cnopslabs/oshiv
-VERSION := $(shell git describe --always)
+VERSION := $(shell git describe --tags --always --dirty)
 OUTPUT_DIR := build
 PLATFORMS := darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 linux/amd64 linux/arm64
 
@@ -46,20 +46,20 @@ staticcheck:
 # Install local binary
 install-local:
 	@echo "Installing local binary..."
-	@mkdir -p $(OUTPUT_DIR) # Ensure the output directory exists
+	@mkdir -p $(OUTPUT_DIR)
 	GOOS=$(GOOS_COMPILE) \
 	GOARCH=$(GOARCH_COMPILE) \
-	go build -v -ldflags="-X main.version=$(VERSION)" \
+	go build -v -ldflags="-X cmd.version=$(VERSION)" \
 	-o $(OUTPUT_DIR)/$(APP_NAME)_$(VERSION)_$(GOOS_COMPILE)_$(GOARCH_COMPILE)
 
 # Compile binaries for multiple platforms
 compile:
 	@echo "Compiling binaries for multiple platforms..."
-	@mkdir -p $(OUTPUT_DIR) # Ensure the output directory exists
+	@mkdir -p $(OUTPUT_DIR)
 	$(foreach platform, $(PLATFORMS), \
 		$(eval os_arch = $(subst /, ,$(platform))) \
 		GOOS=$(word 1,${os_arch}) GOARCH=$(word 2,${os_arch}) \
-		go build -v -ldflags="-X main.version=$(VERSION)" \
+		go build -v -ldflags="-X cmd.version=$(VERSION)" \
 		-o $(OUTPUT_DIR)/$(APP_NAME)_$(VERSION)_$(word 1,${os_arch})_$(word 2,${os_arch});)
 
 # Zip compiled binaries
