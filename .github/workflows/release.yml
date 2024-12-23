@@ -41,6 +41,10 @@ jobs:
       - name: Install Staticcheck
         run: go install honnef.co/go/tools/cmd/staticcheck@latest
 
+      - name: Install Zip on Windows
+        if: runner.os == 'Windows'
+        run: choco install zip -y
+
       - name: Verify environment
         run: make check-env
 
