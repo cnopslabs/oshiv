@@ -1,53 +1,86 @@
-OUT := oshiv
+# Application Details
+APP_NAME := oshiv
 PKG := github.com/cnopslabs/oshiv
-VERSION := $(shell git describe --always)
-PKG_LIST := $(shell go list ${PKG}/... | grep -v /vendor/)
-GO_FILES := $(shell find . -name '*.go' | grep -v /vendor/)
-OS := $(shell uname -s | awk '{print tolower($0)}')
-ARCH := $(shell uname -m)
+VERSION := $(shell git describe --tags --always --dirty)
+OUTPUT_DIR := build
+PLATFORMS := darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 linux/amd64 linux/arm64
 
+# Determine GOOS and GOARCH
+ifeq ($(OS),Windows_NT)
+	GOOS_COMPILE := windows
+else
+	GOOS_COMPILE := $(shell uname -s | tr '[:upper:]' '[:lower:]')
+endif
+
+GOARCH_COMPILE := $(shell uname -m | sed -e 's/x86_64/amd64/' -e 's/i[3-6]86/386/')
+
+# Build Flags
+LDFLAGS := "-X $(PKG)/cmd.version=$(VERSION)"
+
+# Build Targets
+.PHONY: all build release clean vet staticcheck compile zip test check-env html
+
+# Default target
+all: build
+
+# Build the application for the local environment
 build: vet staticcheck install-local
 
-release: clean vet staticcheck compile zip html install-local
+# Release target for multiple platforms
+release: clean vet staticcheck compile zip
 
+# Clean build artifacts
 clean:
-	-@rm -fr website/oshiv/downloads/mac/intel/${OUT}*
-	-@rm -fr website/oshiv/downloads/mac/arm/${OUT}*
-	-@rm -fr website/oshiv/downloads/windows/intel/${OUT}*
-	-@rm -fr website/oshiv/downloads/windows/arm/${OUT}*
-	-@rm -fr website/oshiv/downloads/linux/intel/${OUT}*
-	-@rm -fr website/oshiv/downloads/linux/arm/${OUT}*
-	-@rm -f website/index.html
+	@echo "Cleaning up..."
+	@rm -rf $(OUTPUT_DIR)
+	@rm -f website/index.html
 
+# Run `go vet` on the codebase
 vet:
-	@go vet ${PKG_LIST}
+	@echo "Running go vet..."
+	@go vet ./...
 
+# Run static analysis with staticcheck
 staticcheck:
+	@echo "Running staticcheck..."
 	@go install honnef.co/go/tools/cmd/staticcheck@latest
 	@staticcheck ./...
 
-# test:
-# 	@go test -short ${PKG_LIST}
-
+# Install local binary
 install-local:
-	GOOS=${OS} GOARCH=${ARCH} go build -v -ldflags="-X main.version=${VERSION}"
-	go install -v -ldflags="-X main.version=${VERSION}"
+	@echo "Installing local binary for native platform..."
+	@mkdir -p $(OUTPUT_DIR)
+	GOOS=$(GOOS_COMPILE) \
+	GOARCH=$(GOARCH_COMPILE) \
+	go build -v -ldflags=$(LDFLAGS) \
+	-o $(OUTPUT_DIR)/$(APP_NAME)_$(VERSION)_$(GOOS_COMPILE)_$(GOARCH_COMPILE)
 
+# Compile binaries for multiple platforms
 compile:
-	GOOS=darwin GOARCH=amd64 go build -v -o website/oshiv/downloads/mac/intel/${OUT}_${VERSION}_darwin_amd64 -ldflags="-X main.version=${VERSION}"
-	GOOS=darwin GOARCH=arm64 go build -v -o website/oshiv/downloads/mac/arm/${OUT}_${VERSION}_darwin_arm64 -ldflags="-X main.version=${VERSION}"
-	GOOS=windows GOARCH=amd64 go build -v -o website/oshiv/downloads/windows/intel/${OUT}_${VERSION}_windows_amd64 -ldflags="-X main.version=${VERSION}"
-	GOOS=windows GOARCH=arm64 go build -v -o website/oshiv/downloads/windows/arm/${OUT}_${VERSION}_windows_arm64 -ldflags="-X main.version=${VERSION}"
-	GOOS=linux GOARCH=amd64 go build -v -o website/oshiv/downloads/linux/intel/${OUT}_${VERSION}_linux_amd64 -ldflags="-X main.version=${VERSION}"
-	GOOS=linux GOARCH=arm64 go build -v -o website/oshiv/downloads/linux/arm/${OUT}_${VERSION}_linux_arm64 -ldflags="-X main.version=${VERSION}"
+	@echo "Compiling binaries for multiple platforms..."
+	@mkdir -p $(OUTPUT_DIR)
+	$(foreach platform, $(PLATFORMS), \
+		$(eval os_arch = $(subst /, ,$(platform))) \
+		GOOS=$(word 1,${os_arch}) GOARCH=$(word 2,${os_arch}) \
+		go build -v -ldflags=$(LDFLAGS) \
+		-o $(OUTPUT_DIR)/$(APP_NAME)_$(VERSION)_$(word 1,${os_arch})_$(word 2,${os_arch});)
 
+# Zip compiled binaries
 zip:
-	zip -j website/oshiv/downloads/mac/intel/${OUT}_${VERSION}_darwin_amd64.zip website/oshiv/downloads/mac/intel/${OUT}_${VERSION}_darwin_amd64
-	zip -j website/oshiv/downloads/mac/arm/${OUT}_${VERSION}_darwin_arm64.zip website/oshiv/downloads/mac/arm/${OUT}_${VERSION}_darwin_arm64
-	zip -j website/oshiv/downloads/windows/intel/${OUT}_${VERSION}_windows_amd64.zip website/oshiv/downloads/windows/intel/${OUT}_${VERSION}_windows_amd64
-	zip -j website/oshiv/downloads/windows/arm/${OUT}_${VERSION}_windows_arm64.zip website/oshiv/downloads/windows/arm/${OUT}_${VERSION}_windows_arm64
-	zip -j website/oshiv/downloads/linux/intel/${OUT}_${VERSION}_linux_amd64.zip website/oshiv/downloads/linux/intel/${OUT}_${VERSION}_linux_amd64
-	zip -j website/oshiv/downloads/linux/arm/${OUT}_${VERSION}_linux_arm64.zip website/oshiv/downloads/linux/arm/${OUT}_${VERSION}_linux_arm64
+	@echo "Creating ZIP archives for binaries..."
+	find $(OUTPUT_DIR) -type f ! -name "*.zip" -exec zip -j {}.zip {} \;
+
+# Run tests
+test:
+	@echo "Running tests..."
+	@go test -v ./...
+
+# Check environment setup
+check-env:
+	@echo "Checking environment..."
+	@command -v go >/dev/null 2>&1 || { echo >&2 "Go is not installed. Aborting."; exit 1; }
+	@command -v staticcheck >/dev/null 2>&1 || { echo >&2 "Staticcheck is not installed. Run 'make staticcheck' to install it."; exit 1; }
+	@command -v zip >/dev/null 2>&1 || { echo >&2 "Zip is not installed. Aborting."; exit 1; }
 
 html:
 	cd website/oshiv; go run renderhtml.go ${VERSION} index.tmpl; cd ..
