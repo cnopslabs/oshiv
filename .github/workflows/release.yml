@@ -13,11 +13,10 @@ on:
       - 'v*'
 
 jobs:
-  release:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+  create_release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
     permissions:
       contents: write
       packages: write
@@ -44,6 +43,38 @@ jobs:
               git checkout ${{ github.event.inputs.tag }}
             fi
           fi
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          release_name: Release ${{ env.RELEASE_TAG }}
+          body: |
+            Release ${{ env.RELEASE_TAG }} with pre-built binaries.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+
+
+  release:
+    needs: create_release
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set release tag environment variable
+        id: set_release_tag
+        run: echo "RELEASE_TAG=${{ github.event.inputs.tag || github.ref_name }}" >> $GITHUB_ENV
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -73,26 +104,10 @@ jobs:
       - name: Compress binary
         run: zip build/oshiv_${{ env.RELEASE_TAG }}_${{ matrix.os }}.zip build/*
 
-      # Only create the GitHub release once (e.g., on ubuntu-latest, or any chosen platform)
-      - name: Create GitHub Release
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        id: create_release
-        uses: actions/create-release@v1
-        with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          release_name: Release ${{ env.RELEASE_TAG }}
-          body: |
-            Release ${{ env.RELEASE_TAG }} with pre-built binaries.
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-
-      # Upload the binary as an asset for all platforms
       - name: Upload binary asset to release
         uses: actions/upload-release-asset@v1
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url || github.event.release.upload_url }}
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
           asset_path: build/oshiv_${{ env.RELEASE_TAG }}_${{ matrix.os }}.zip
           asset_name: oshiv_${{ env.RELEASE_TAG }}_${{ matrix.os }}.zip
           asset_content_type: application/zip
