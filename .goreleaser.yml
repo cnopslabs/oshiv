@@ -35,4 +35,4 @@ brews:
       bin.install "oshiv"
     repository:
       owner: cnopslabs
-      name: homebrew-tap
+      name: oshiv
