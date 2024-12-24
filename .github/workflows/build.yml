@@ -1,4 +1,4 @@
-name: Build oshiv cli
+name: CI Build
 
 on:
   push:
