@@ -27,3 +27,6 @@ go.work.sum
 downloads
 .DS_Store
 website/oshiv/index.html
+
+.idea
+build
