@@ -1,8 +1,12 @@
+version: 2
+
 builds:
   - binary: oshiv
+    id: oshiv
     goos:
       - darwin
       - linux
+      - windows
     goarch:
       - amd64
       - arm64
@@ -10,23 +14,15 @@ builds:
       - CGO_ENABLED=0
     flags:
       - -mod=vendor
+    ldflags:
+      - "-s -w -X 'github.com/cnopslabs/oshiv/cmd.version={{.Version}}'"
+
 
 release:
   prerelease: auto
 
 universal_binaries:
   - replace: true
-
-brews:
-  -
-    name: askcloudhelloworld
-    homepage: https://github.com/cnopslabs/oshiv
-    tap:
-      owner: cnopslabs
-      name: homebrew-cnopslabs
-    commit_author:
-      name: rozdolsky33
-      email: rozdolskyvolodymyr@gmail.com
 
 checksum:
   name_template: 'checksums.txt'
