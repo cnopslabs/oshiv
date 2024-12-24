@@ -80,7 +80,7 @@ jobs:
           prerelease: false
           generate_release_notes: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Upload binary asset to release
         uses: actions/upload-release-asset@v1
@@ -89,3 +89,5 @@ jobs:
           asset_path: build/oshiv_${{ github.ref_name }}_${{ matrix.os }}.zip
           asset_name: oshiv_${{ github.ref_name }}_${{ matrix.os }}.zip
           asset_content_type: application/zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
