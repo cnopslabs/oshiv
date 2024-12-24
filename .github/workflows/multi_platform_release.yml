@@ -80,6 +80,9 @@ jobs:
       - name: Install Staticcheck
         run: go install honnef.co/go/tools/cmd/staticcheck@latest
 
+      - name: Install zip utility
+        run: sudo apt-get install -y zip
+
       - name: Verify environment
         run: make check-env
 
@@ -93,18 +96,28 @@ jobs:
           make clean
           make compile VERSION=${{ env.RELEASE_TAG }}
 
+      - name: Debug - Check generated binaries
+        run: ls -l build/
+
       - name: Compress binaries
         run: make zip
+
+      - name: Debug - Check compressed files
+        run: ls -l build/
 
       - name: Upload all binary assets to release
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
-          for file in build/*.zip; do
-            echo "Uploading $file"
-            curl -X POST \
-              -H "Authorization: token ${{ secrets.RELEASE_TOKEN }}" \
-              -H "Content-Type: application/zip" \
-              --data-binary @"$file" \
-              "${{ needs.create_release.outputs.upload_url }}?name=$(basename $file)";
-          done
+          if ls build/*.zip >/dev/null 2>&1; then
+            for file in build/*.zip; do
+              echo "Uploading $file"
+              curl -X POST \
+                -H "Authorization: token $GITHUB_TOKEN" \
+                -H "Content-Type: application/zip" \
+                --data-binary @"$file" \
+                "${{ needs.create_release.outputs.upload_url }}?name=$(basename $file)";
+            done
+          else
+            echo "No ZIP files found to upload."
+          fi
