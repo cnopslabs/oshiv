@@ -28,7 +28,9 @@ checksum:
 
 brews:
   - name: oshiv
-    tap: cnopslabs/homebrew-tap
+    github:
+      owner: cnopslabs
+      name: homebrew-tap
     homepage: "https://github.com/cnopslabs/oshiv"
     description: "Tool for finding and connecting to OCI instances"
     license: "MIT"
