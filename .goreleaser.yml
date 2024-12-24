@@ -25,3 +25,13 @@ universal_binaries:
 
 checksum:
   name_template: 'checksums.txt'
+
+brews:
+  - name: oshiv
+    github:
+      owner: cnopslabs
+      name: homebrew-tap
+    homepage: "https://github.com/cnopslabs/oshiv"
+    description: "Tool for finding and connecting to OCI instances"
+    license: "MIT"
+    install: bin.install "oshiv"
