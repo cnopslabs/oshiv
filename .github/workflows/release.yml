@@ -26,11 +26,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Git
+      - name: Set up Git and check/create tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            git fetch --all
-            git checkout ${{ github.event.inputs.tag }}
+            git fetch --all --tags
+            if ! git rev-parse ${{ github.event.inputs.tag }} >/dev/null 2>&1; then
+              echo "Tag ${{ github.event.inputs.tag }} does not exist. Creating it now..."
+              git tag ${{ github.event.inputs.tag }}
+              git push origin ${{ github.event.inputs.tag }}
+            else
+              echo "Tag ${{ github.event.inputs.tag }} already exists. Checking out..."
+              git checkout ${{ github.event.inputs.tag }}
+            fi
           fi
 
       - name: Set up Go
@@ -79,6 +86,6 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: build/
+          asset_path: build/oshiv_${{ github.ref_name }}_${{ matrix.os }}.zip
           asset_name: oshiv_${{ github.ref_name }}_${{ matrix.os }}.zip
           asset_content_type: application/zip
