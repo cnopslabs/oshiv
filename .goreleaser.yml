@@ -13,7 +13,7 @@ builds:
     env:
       - CGO_ENABLED=0
     flags:
-      - -mod=vendor
+      - -mod=readonly
     ldflags:
       - "-s -w -X 'github.com/cnopslabs/oshiv/cmd.version={{.Version}}'"
 
