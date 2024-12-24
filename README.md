@@ -1,10 +1,8 @@
 # OCI Shiv
 [![CI Build](https://github.com/cnopslabs/oshiv/actions/workflows/build.yml/badge.svg)](https://github.com/cnopslabs/oshiv/actions/workflows/build.yml)
-
 [![Version](https://img.shields.io/badge/goversion-1.23.x-blue.svg)](https://golang.org)
 <a href="https://golang.org"><img src="https://img.shields.io/badge/powered_by-Go-3362c2.svg?style=flat-square" alt="Built with GoLang"></a>
 [![License](http://img.shields.io/badge/license-mit-blue.svg?style=flat-square)](https://raw.githubusercontent.com/cnopslabs/oshiv/main/LICENSE.md)
-
 [![Go Report Card](https://goreportcard.com/badge/github.com/cnopslabs/oshiv)](https://goreportcard.com/report/github.com/cnopslabs/oshiv)
 
 A tool for quickly finding OCI resources and connecting to instances and OKE clusters via the bastion service.
