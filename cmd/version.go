@@ -12,7 +12,7 @@ var version = "unknown"
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number of oshiv CLI",
-	Long:  `Print the version number of oshiv CLI`,
+	Long:  "Print the version number of oshiv CLI",
 	Run: func(cmd *cobra.Command, args []string) {
 		printVersion()
 	},
@@ -26,14 +26,16 @@ func printVersion() {
 func init() {
 	// Add the version command for long form (e.g., `oshiv version`)
 	rootCmd.AddCommand(versionCmd)
+
+	// Register a global persistent flag to support short form (e.g., `oshiv -v`)
 	rootCmd.PersistentFlags().BoolP("version", "v", false, "Print the version number of oshiv CLI")
-	rootCmd.Flags().BoolP("version", "v", false, "Print the short version number of oshiv CLI")
 
-	cobra.OnInitialize(checkVersionFlag)
-}
-
-func checkVersionFlag() {
-	if versionFlag, _ := rootCmd.Flags().GetBool("version"); versionFlag {
-		printVersion()
+	// Override the persistent pre-run hook to check for the `-v` flag
+	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		if versionFlag, _ := cmd.Flags().GetBool("version"); versionFlag {
+			printVersion()
+			// Exit to avoid running another command if -v is passed
+			cobra.CheckErr(nil)
+		}
 	}
 }
