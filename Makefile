@@ -1,7 +1,7 @@
 # Application Details
 APP_NAME := oshiv
 PKG := github.com/cnopslabs/oshiv
-VERSION := $(shell git describe --tags --always --dirty)
+VERSION ?= $(shell git describe --tags --always --dirty)
 OUTPUT_DIR := build
 PLATFORMS := darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 linux/amd64 linux/arm64
 

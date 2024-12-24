@@ -99,7 +99,7 @@ jobs:
           VERSION: ${{ env.RELEASE_TAG }}
         run: |
           make clean
-          make install-local
+          make install-local VERSION=${{ env.RELEASE_TAG }}
 
       - name: Compress binary
         run: zip build/oshiv_${{ env.RELEASE_TAG }}_${{ matrix.os }}.zip build/*
