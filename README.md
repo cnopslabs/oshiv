@@ -110,7 +110,7 @@ You can also install `oshiv` using Homebrew (recommended).
 
 #### Steps
 
-1. Add the `cnopslabs/homebrew-tap` tap:
+1. Add the `cnopslabs/oshiv` tap:
    ```bash
    brew tap cnopslabs/oshiv https://github.com/cnopslabs/oshiv
    ```
