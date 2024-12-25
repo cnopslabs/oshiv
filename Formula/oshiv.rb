@@ -5,12 +5,12 @@
 class Oshiv < Formula
   desc "Tool for finding and connecting to OCI instances"
   homepage "https://github.com/cnopslabs/oshiv"
-  version "1.2.2"
+  version "1.2.0"
   license "MIT"
 
   on_macos do
-    url "https://github.com/cnopslabs/oshiv/releases/download/v1.2.2/oshiv_1.2.2_darwin_all.tar.gz"
-    sha256 "a71e40df83619de4dc116d38062547b817528aabff18b8165b0055521ce807aa"
+    url "https://github.com/cnopslabs/oshiv/releases/download/v1.2.0/oshiv_1.2.0_darwin_all.tar.gz"
+    sha256 "8b0c5a3ab306c2a3e1caa7a7e8423057a59db188d950b9fdf38bd5023dff9eb1"
 
     def install
       bin.install "oshiv"
@@ -20,8 +20,8 @@ class Oshiv < Formula
   on_linux do
     if Hardware::CPU.intel?
       if Hardware::CPU.is_64_bit?
-        url "https://github.com/cnopslabs/oshiv/releases/download/v1.2.2/oshiv_1.2.2_linux_amd64.tar.gz"
-        sha256 "584cd8d3b32ead3e08346c2f74c0944ad97a938907dcea06c7b544bc7a27fdda"
+        url "https://github.com/cnopslabs/oshiv/releases/download/v1.2.0/oshiv_1.2.0_linux_amd64.tar.gz"
+        sha256 "ff5d65d168299503c4b0dcc2c05200dbe5b303d1e154f0511c056e926e2db76b"
 
         def install
           bin.install "oshiv"
@@ -30,8 +30,8 @@ class Oshiv < Formula
     end
     if Hardware::CPU.arm?
       if Hardware::CPU.is_64_bit?
-        url "https://github.com/cnopslabs/oshiv/releases/download/v1.2.2/oshiv_1.2.2_linux_arm64.tar.gz"
-        sha256 "f96631828519628dbc71334d8809d7dc7d2ac9a008efaa0357add94b0764e16d"
+        url "https://github.com/cnopslabs/oshiv/releases/download/v1.2.0/oshiv_1.2.0_linux_arm64.tar.gz"
+        sha256 "5364ad15cd25a5a2efe2e0c77f98c2baa8f227bbd3bb283cf01613b02fbdbbde"
 
         def install
           bin.install "oshiv"
