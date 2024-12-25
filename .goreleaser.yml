@@ -36,3 +36,4 @@ brews:
     repository:
       owner: cnopslabs
       name: oshiv
+    directory: Formula
