@@ -1,5 +1,6 @@
 # OCI Shiv
 [![CI Build](https://github.com/cnopslabs/oshiv/actions/workflows/build.yml/badge.svg)](https://github.com/cnopslabs/oshiv/actions/workflows/build.yml)
+![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/cnopslabs/oshiv?sort=semver)
 [![Version](https://img.shields.io/badge/goversion-1.23.x-blue.svg)](https://golang.org)
 <a href="https://golang.org"><img src="https://img.shields.io/badge/powered_by-Go-3362c2.svg?style=flat-square" alt="Built with GoLang"></a>
 [![License](http://img.shields.io/badge/license-mit-blue.svg?style=flat-square)](https://raw.githubusercontent.com/cnopslabs/oshiv/main/LICENSE.md)
@@ -52,65 +53,129 @@ Connect via bastion service
 oshiv bastion -y port-forward -k oke-my-foo-cluster -i 123.456.789.7
 ```
 
-## Install
+## Install `oshiv`
 
-### Download
+`oshiv` can be installed either by downloading the binary manually or using [Homebrew](https://brew.sh) for macOS and Linux.
 
-Download binary from [https://github.com/cnopslabs/oshiv/releases](https://github.com/cnopslabs/oshiv/releases).
+---
 
-### Place in PATH
+### 1. Download Binary
 
-*MacOS*
+You can download the latest binary from the [oshiv releases](https://github.com/cnopslabs/oshiv/releases) page.
 
-Place binary in `/usr/local/bin` or other location in your `PATH`.
+---
 
-Example "other"
+### 2. Place the Binary in Your `PATH`
 
-```
-echo $PATH
+#### macOS/Linux
 
-/usr/local/bin:/Users/YOUR_USER/.local/bin
-```
+After downloading the binary, move it to a directory included in your `PATH` (e.g., `/usr/local/bin` or any custom location).
 
-```
-mv ~/Downloads/oshiv  ~/.local/bin
-sudo xattr -d com.apple.quarantine ~/.local/bin/oshiv
-chmod +x ~/.local/bin/oshiv
+#### Example: Adding Binary to a Custom Path
 
+1. Check your `PATH`:
+   ```bash
+   echo $PATH
+   ```
+   Example output:
+   ```
+   /usr/local/bin:/Users/YOUR_USER/.local/bin
+   ```
+
+2. Move the binary to a directory in your `PATH` (e.g., `~/.local/bin`):
+   ```bash
+   mv ~/Downloads/oshiv ~/.local/bin
+   ```
+
+3. For macOS, clear quarantine (if applicable):
+   ```bash
+   sudo xattr -d com.apple.quarantine ~/.local/bin/oshiv
+   ```
+
+4. Make the binary executable:
+   ```bash
+   chmod +x ~/.local/bin/oshiv
+   ```
+
+5. Verify the installation:
+   ```bash
+   oshiv -h
+   ```
+
+---
+
+### 3. Installation via Homebrew
+
+You can also install `oshiv` using Homebrew (recommended).
+
+#### Steps
+
+1. Add the `cnopslabs/homebrew-tap` tap:
+   ```bash
+   brew tap cnopslabs/homebrew-tap
+   ```
+
+2. Install `oshiv`:
+   ```bash
+   brew install oshiv
+   ```
+
+3. Verify the installation:
+   ```bash
+   oshiv -h
+   ```
+
+---
+
+
+## Windows Setup
+
+To use `oshiv` on Windows, you need to add its location to the `PATH` environment variable.
+
+### Steps
+
+1. Open **Control Panel** → **System** → **System Settings** → **Environment Variables**.
+2. Scroll down in the **System Variables** section and locate the `PATH` variable.
+3. Click **Edit** and add the location of your `oshiv` binary to the `PATH` variable. For example, `c:\oshiv`.
+
+   *Note: When adding a new location, ensure that a semicolon (`;`) is included as a delimiter if appending to existing entries. Example: `c:\path;c:\oshiv`.*
+
+4. Launch a new console session to apply the updated environment variable.
+
+---
+
+### Verify Installation
+
+Once the `PATH` is updated, verify the installation by running:
+
+```bash
 oshiv -h
 ```
 
-*Windows*
+If the command prints the `oshiv` help information, the setup is complete.
 
-Go to Control Panel -> System -> System settings -> Environment Variables.
-
-Scroll down in system variables until you find `PATH`.
-
-Click edit and the location of your binary. For example, `c:\oshiv`.
-
-*Note: Be sure to include a semicolon at the end of the previous as that is the delimiter, i.e. `c:\path;c:\oshiv`.*
-
-Launch a new console for the settings to take effect.
-
-### Verify
-
-```
-oshiv -h
-```
+---
 
 ## Usage
 
 ### Prerequisites
 
-#### 1. OCI authentication and authorization
+#### 1. OCI Authentication and Authorization
 
-`oshiv` utilizes the OCI CLI for OCI authentication and authorization. See [Installing the CLI](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm#Quickstart).
+`oshiv` relies on the OCI CLI for authentication and authorization. You can follow Oracle's [Installing the CLI guide](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm#Quickstart) to set up the OCI CLI.
 
-`oshiv` will use the credentials set in `$HOME/.oci/config` and the OCI profile set by the `OCI_CLI_PROFILE` environment variable. If the `OCI_CLI_PROFILE` environment variable is not set it will use the DEFAULT profile.
+`oshiv` uses the credentials stored in the `$HOME/.oci/config` file and the OCI profile specified by the `OCI_CLI_PROFILE` environment variable. If the `OCI_CLI_PROFILE` variable is not set, it defaults to the `DEFAULT` profile.
 
-```
+To set a custom OCI profile, use the following command:
+
+```bash
 export OCI_CLI_PROFILE=MYCUSTOMPROFILE
 ```
+Replace `MYCUSTOMPROFILE` with the name of your desired OCI profile.
+
+---
+
+With these steps completed, you’re ready to use `oshiv` for managing and connecting to OCI instances.
 
 #### 2. OCI Tenancy
 
