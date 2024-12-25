@@ -349,7 +349,7 @@ oshiv -h
 ```
 
 ```
-A tool for finding and connecting to OCI resources
+A tool for finding and connecting to OCI resources via the bastion service
 
 Usage:
   oshiv [flags]
@@ -367,11 +367,13 @@ Available Commands:
   oke         Find and list OKE clusters
   policy      Find and list policies by name or statement
   subnet      Find and list subnets
+  version     Print the version number of oshiv CLI
 
 Flags:
   -c, --compartment string   The name of the compartment to use
   -h, --help                 help for oshiv
   -t, --tenancy-id string    Override's the default tenancy with this tenancy ID
+  -v, --version              Print the version number of oshiv CLI
 
 Use "oshiv [command] --help" for more information about a command.
 ```
