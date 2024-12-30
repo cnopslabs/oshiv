@@ -6,8 +6,12 @@ on:
       - main
       - 'feature-*'
       - 'feature/*'
+    paths-ignore:
+      - 'README.md'
+      - 'Formula/**'
   pull_request:
-
+    paths-ignore:
+      - 'README.md'
 jobs:
   build:
     runs-on: ubuntu-latest
