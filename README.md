@@ -58,14 +58,32 @@ oshiv bastion -y port-forward -k oke-my-foo-cluster -i 123.456.789.7
 `oshiv` can be installed either by downloading the binary manually or using [Homebrew](https://brew.sh) for macOS and Linux.
 
 ---
+### 1. Installation via Homebrew
 
-### 1. Download Binary
+You can also install `oshiv` using Homebrew (recommended).
+
+#### Steps
+
+1. Add the `cnopslabs/oshiv` tap:
+   ```bash
+   brew tap cnopslabs/oshiv https://github.com/cnopslabs/oshiv
+   ```
+
+2. Install `oshiv`:
+   ```bash
+   brew install oshiv
+   ```
+
+3. Verify the installation:
+   ```bash
+   oshiv -h
+   ```
+
+### 2. Download Binary
 
 You can download the latest binary from the [oshiv releases](https://github.com/cnopslabs/oshiv/releases) page.
 
----
-
-### 2. Place the Binary in Your `PATH`
+### Place the Binary in Your `PATH`
 
 #### macOS/Linux
 
@@ -101,30 +119,6 @@ After downloading the binary, move it to a directory included in your `PATH` (e.
    ```bash
    oshiv -h
    ```
-
----
-
-### 3. Installation via Homebrew
-
-You can also install `oshiv` using Homebrew (recommended).
-
-#### Steps
-
-1. Add the `cnopslabs/oshiv` tap:
-   ```bash
-   brew tap cnopslabs/oshiv https://github.com/cnopslabs/oshiv
-   ```
-
-2. Install `oshiv`:
-   ```bash
-   brew install oshiv
-   ```
-
-3. Verify the installation:
-   ```bash
-   oshiv -h
-   ```
-
 ---
 
 
