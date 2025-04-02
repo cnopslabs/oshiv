@@ -396,11 +396,14 @@ Test/validate changes, push to your fork, make PR
 
 ```
 git tag -a <VERSION> -m '<COMMENTS>'
+make release
 ```
 
 ```
-make release
+git push origin <VERSION>
 ```
+
+Verify the [releaser](https://github.com/cnopslabs/oshiv/actions/workflows/releaser.yml) job completes successfully
 
 ## Future enhancements and updates
 
