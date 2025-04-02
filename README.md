@@ -354,6 +354,7 @@ Available Commands:
   compartment Find and list compartments
   completion  Generate the autocompletion script for the specified shell
   config      Display oshiv configuration
+  db          Find and list databases
   help        Help about any command
   image       Find and list OCI compute images
   info        Display your custom OCI tenancy information
@@ -368,8 +369,6 @@ Flags:
   -h, --help                 help for oshiv
   -t, --tenancy-id string    Override's the default tenancy with this tenancy ID
   -v, --version              Print the version number of oshiv CLI
-
-Use "oshiv [command] --help" for more information about a command.
 ```
 
 ### Info
@@ -432,4 +431,3 @@ sudo xattr -d com.apple.quarantine ~/.local/bin/oshiv
 ## Reference
 
 https://docs.oracle.com/en-us/iaas/tools/go/65.78.0/
-
