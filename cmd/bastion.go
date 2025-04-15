@@ -57,7 +57,6 @@ var bastionCmd = &cobra.Command{
 		flagSshPublicKey, _ := cmd.Flags().GetString("public-key")
 
 		// Flags applicable to managed sessions
-		flagSshPort, _ := cmd.Flags().GetInt("ssh-port")
 		flagInstanceId, _ := cmd.Flags().GetString("instance-id")
 		flagSshUser, _ := cmd.Flags().GetString("user")
 
@@ -94,9 +93,9 @@ var bastionCmd = &cobra.Command{
 
 			var sessionId *string
 			if flagOkeName != "" {
-				sessionId = resources.CreateBastionSession(bastionClient, bastionId, flagSessionType, string(publicKeyContent), flagTargetIp, flagSshPort, 6443, flagTtl, flagInstanceId, flagSshUser)
+				sessionId = resources.CreateBastionSession(bastionClient, bastionId, flagSessionType, string(publicKeyContent), flagTargetIp, 22, 6443, flagTtl, flagInstanceId, flagSshUser)
 			} else {
-				sessionId = resources.CreateBastionSession(bastionClient, bastionId, flagSessionType, string(publicKeyContent), flagTargetIp, flagSshPort, flagHostFwPort, flagTtl, flagInstanceId, flagSshUser)
+				sessionId = resources.CreateBastionSession(bastionClient, bastionId, flagSessionType, string(publicKeyContent), flagTargetIp, 22, flagHostFwPort, flagTtl, flagInstanceId, flagSshUser)
 			}
 
 			session := resources.FetchSession(bastionClient, sessionId, flagSessionType)
@@ -122,12 +121,12 @@ var bastionCmd = &cobra.Command{
 					// If creating bastion session to an OKE cluster, lookup cluster ID and set ports to 6443
 					flagOkeId := resources.FetchClusterId(containerEngineClient, compartmentId, flagOkeName)
 					fmt.Println("flagOkeId")
-					resources.PrintPortFwSshCommands(bastionClient, sessionId, flagTargetIp, flagSshPort, flagSshPrivateKey, 6443, 6443, flagOkeId)
+					resources.PrintPortFwSshCommands(bastionClient, sessionId, flagTargetIp, 22, flagSshPrivateKey, 6443, 6443, flagOkeId)
 				} else {
-					resources.PrintPortFwSshCommands(bastionClient, sessionId, flagTargetIp, flagSshPort, flagSshPrivateKey, flagLocalFwPort, flagHostFwPort, "")
+					resources.PrintPortFwSshCommands(bastionClient, sessionId, flagTargetIp, 22, flagSshPrivateKey, flagLocalFwPort, flagHostFwPort, "")
 				}
 			} else if flagSessionType == "managed" {
-				resources.PrintManagedSshCommands(bastionClient, sessionId, flagTargetIp, flagSshUser, flagSshPort, flagSshPrivateKey, flagLocalFwPort, flagHostFwPort)
+				resources.PrintManagedSshCommands(bastionClient, sessionId, flagTargetIp, flagSshUser, 22, flagSshPrivateKey, flagLocalFwPort, flagHostFwPort)
 			}
 		}
 	},
@@ -163,7 +162,6 @@ func init() {
 	bastionCmd.Flags().IntP("ttl", "m", 10800, "Bastion session TTL")
 	bastionCmd.Flags().StringP("private-key", "a", defaultPrivateKeyPath, "Path to SSH private key (identity file)")
 	bastionCmd.Flags().StringP("public-key", "e", defaultPublicKeyPath, "Path to SSH public key")
-	bastionCmd.Flags().IntP("ssh-port", "p", 22, "Port to connect to on the remote host")
 
 	// Flags applicable to managed sessions
 	bastionCmd.Flags().StringP("instance-id", "o", "", "The OCID of the instance to connect to")
