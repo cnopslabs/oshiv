@@ -199,6 +199,7 @@ Private IP: 123.456.789.6
 ```
 
 </details>
+
 <br>
 
 Create bastion session to connect to instance
