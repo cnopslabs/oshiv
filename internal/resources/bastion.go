@@ -264,7 +264,7 @@ func PrintPortFwSshCommands(bastionClient bastion.BastionClient, sessionId *stri
 	utils.Yellow.Println("\nPort Forwarding command")
 	fmt.Println("ssh -i \"" + sshPrivateKey + "\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 
-	fmt.Println("-p " + strconv.Itoa(sshPort) + " -N -L " + strconv.Itoa(localFwPort) + ":" + targetIp + ":" + strconv.Itoa(hostFwPort) + " " + bastionHost)
+	fmt.Println("-N -L " + strconv.Itoa(localFwPort) + ":" + targetIp + ":" + strconv.Itoa(hostFwPort) + " " + bastionHost)
 }
 
 // Print SSH commands to connect via bastion
@@ -280,29 +280,36 @@ func PrintManagedSshCommands(bastionClient bastion.BastionClient, sessionId *str
 		utils.Yellow.Println("\nTunnel command")
 		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
-		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
-		fmt.Println("-P " + strconv.Itoa(sshPort) + " " + sshUser + "@" + instanceIp + " -N -L " + color.RedString("LOCAL_PORT") + ":" + instanceIp + ":" + color.RedString("REMOTE_PORT"))
+		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p " + bastionHost + "' \\")
+		fmt.Println(sshUser + "@" + instanceIp + " -N -L " + color.RedString("LOCAL_PORT") + ":" + instanceIp + ":" + color.RedString("REMOTE_PORT"))
 	} else if localFwPort != 0 {
 		utils.Yellow.Println("\nTunnel command")
-		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
+
+		// Use sudo for privileged ports
+		if localFwPort < 1024 {
+			fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
+		} else {
+			fmt.Println("ssh -i \"" + sshIdentityFile + "\" \\")
+		}
+
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
-		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
-		fmt.Println("-P " + strconv.Itoa(sshPort) + " " + sshUser + "@" + instanceIp + " -N -L " + strconv.Itoa(localFwPort) + ":" + instanceIp + ":" + strconv.Itoa(hostFwPort))
+		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p " + bastionHost + "' \\")
+		fmt.Println(sshUser + "@" + instanceIp + " -N -L " + strconv.Itoa(localFwPort) + ":" + instanceIp + ":" + strconv.Itoa(hostFwPort))
 	} else {
 		utils.Yellow.Println("\nTunnel command")
 		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
-		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
-		fmt.Println("-P " + strconv.Itoa(sshPort) + " " + sshUser + "@" + instanceIp + " -N -L " + strconv.Itoa(hostFwPort) + ":" + instanceIp + ":" + strconv.Itoa(hostFwPort))
+		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p " + bastionHost + "' \\")
+		fmt.Println(sshUser + "@" + instanceIp + " -N -L " + strconv.Itoa(hostFwPort) + ":" + instanceIp + ":" + strconv.Itoa(hostFwPort))
 	}
 
 	utils.Yellow.Println("\nSCP command")
-	fmt.Println("scp -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P " + strconv.Itoa(sshPort) + " \\")
-	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p -p 22 " + bastionHost + "' \\")
+	fmt.Println("scp -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" + " \\")
+	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p " + bastionHost + "' \\")
 	fmt.Println(color.RedString("SOURCE_PATH ") + sshUser + "@" + instanceIp + ":" + color.RedString("TARGET_PATH"))
 
 	utils.Yellow.Println("\nSSH command")
 	fmt.Println("ssh -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
-	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p -p 22 " + bastionHost + "' \\")
-	fmt.Println("-P " + strconv.Itoa(sshPort) + " " + sshUser + "@" + instanceIp)
+	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p " + bastionHost + "' \\")
+	fmt.Println(sshUser + "@" + instanceIp)
 }
