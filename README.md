@@ -115,7 +115,7 @@ Patterns `#1` and `#2` above allow you to override your default tenancy.
 
 ### Defaults
 
-#### 1. SSH keys
+#### SSH keys
 
 By default, `oshiv` looks for the `id_rsa` and `id_rsa.pub` key pair in `$HOME/.ssh`. You can override the directory of your `id_rsa` and `id_rsa.pub` key pair by setting the `OSHIV_SSH_HOME` environment variable. 
 
@@ -135,11 +135,11 @@ See `oshiv bastion -h` for more detail.
 
 *Note: If you use `OSHIV_SSH_HOME` you'll want to add it to your ZSH init file.*
 
-#### 2. SSH user
+#### SSH user
 
 By default, `oshiv` uses the `opc` user. This can be overriden by flags. See `oshiv bastion -h`
 
-#### 3. SSH port
+#### SSH port
 
 By default, `oshiv` uses port `22` user. This can be overriden by flags. See `oshiv -h`
 
@@ -168,6 +168,7 @@ mycompartment
 To set compartment, run:
    oshiv compartment -s COMPARTMENT_NAME
 ```
+
 </details>
 
 Set compartment
@@ -186,7 +187,7 @@ oshiv inst -f foo-app
 
 <details>
 
-<summary>Output</summary
+<summary>Output</summary>
 
 ```
 Name: my-foo-app-1
