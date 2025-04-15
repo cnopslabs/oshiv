@@ -6,7 +6,7 @@
 [![License](http://img.shields.io/badge/license-mit-blue.svg?style=flat-square)](https://raw.githubusercontent.com/cnopslabs/oshiv/main/LICENSE.md)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cnopslabs/oshiv)](https://goreportcard.com/report/github.com/cnopslabs/oshiv)
 
-A tool for quickly finding OCI resources and connecting to instances and OKE clusters via the bastion service.
+A tool for quickly finding and connecting to OCI instances, OKE clusters, and autonomous databases via the bastion service.
 
 ## Quick examples
 
@@ -38,7 +38,7 @@ oshiv bastion -i 123.456.789.5 -o ocid1.instance.oc2.us-luke-1.abcdefghijklmnopq
 Search for clusters
 
 ```
-oshiv -f foo-cluster
+oshiv oke -f foo-cluster
 ```
 ```
 Name: oke-my-foo-cluster
@@ -55,14 +55,10 @@ oshiv bastion -y port-forward -k oke-my-foo-cluster -i 123.456.789.7
 
 ## Install `oshiv`
 
-`oshiv` can be installed either by downloading the binary manually or using [Homebrew](https://brew.sh) for macOS and Linux.
+`oshiv` can be installed using [Homebrew](https://brew.sh) for macOS and Linux. 
 
----
-### 1. Installation via Homebrew
+*For instructions on how to manually download and install the binary, see `Appendix` > `Manual installation`.*
 
-You can also install `oshiv` using Homebrew (recommended).
-
-#### Steps
 
 1. Add the `cnopslabs/oshiv` tap:
    ```bash
@@ -79,82 +75,17 @@ You can also install `oshiv` using Homebrew (recommended).
    oshiv -h
    ```
 
-### 2. Download Binary
-
-You can download the latest binary from the [oshiv releases](https://github.com/cnopslabs/oshiv/releases) page.
-
-### Place the Binary in Your `PATH`
-
-#### macOS/Linux
-
-After downloading the binary, move it to a directory included in your `PATH` (e.g., `/usr/local/bin` or any custom location).
-
-#### Example: Adding Binary to a Custom Path
-
-1. Check your `PATH`:
-   ```bash
-   echo $PATH
-   ```
-   Example output:
-   ```
-   /usr/local/bin:/Users/YOUR_USER/.local/bin
-   ```
-
-2. Move the binary to a directory in your `PATH` (e.g., `~/.local/bin`):
-   ```bash
-   mv ~/Downloads/oshiv ~/.local/bin
-   ```
-
-3. For macOS, clear quarantine (if applicable):
-   ```bash
-   sudo xattr -d com.apple.quarantine ~/.local/bin/oshiv
-   ```
-
-4. Make the binary executable:
-   ```bash
-   chmod +x ~/.local/bin/oshiv
-   ```
-
-5. Verify the installation:
-   ```bash
-   oshiv -h
-   ```
----
-
-
-## Windows Setup
-
-To use `oshiv` on Windows, you need to add its location to the `PATH` environment variable.
-
-### Steps
-
-1. Open **Control Panel** → **System** → **System Settings** → **Environment Variables**.
-2. Scroll down in the **System Variables** section and locate the `PATH` variable.
-3. Click **Edit** and add the location of your `oshiv` binary to the `PATH` variable. For example, `c:\oshiv`.
-
-   *Note: When adding a new location, ensure that a semicolon (`;`) is included as a delimiter if appending to existing entries. Example: `c:\path;c:\oshiv`.*
-
-4. Launch a new console session to apply the updated environment variable.
-
----
-
-### Verify Installation
-
-Once the `PATH` is updated, verify the installation by running:
-
-```bash
-oshiv -h
-```
-
-If the command prints the `oshiv` help information, the setup is complete.
-
----
-
 ## Usage
 
 ### Prerequisites
 
-#### 1. OCI Authentication and Authorization
+#### 1. Optional: Install and configure oshell
+
+[oshell](https://github.com/cnopslabs/oshell) is `oshiv`'s companion shell helper. It helps configure OCI CLI auth and refreshes your OCI tokens automatically.
+
+[https://github.com/cnopslabs/oshell](https://github.com/cnopslabs/oshell)
+
+#### 2. OCI Authentication and Authorization
 
 `oshiv` relies on the OCI CLI for authentication and authorization. You can follow Oracle's [Installing the CLI guide](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm#Quickstart) to set up the OCI CLI.
 
@@ -165,13 +96,12 @@ To set a custom OCI profile, use the following command:
 ```bash
 export OCI_CLI_PROFILE=MYCUSTOMPROFILE
 ```
-Replace `MYCUSTOMPROFILE` with the name of your desired OCI profile.
-
----
 
 With these steps completed, you’re ready to use `oshiv` for managing and connecting to OCI instances.
 
-#### 2. OCI Tenancy
+
+
+#### 3. OCI Tenancy
 
 `oshiv` will attempt to determine tenancy in this order:
 
@@ -203,6 +133,8 @@ Individual keys can be overwritten by passing the the following flags:
 
 See `oshiv bastion -h` for more detail.
 
+*Note: If you use `OSHIV_SSH_HOME` you'll want to add it to your ZSH init file.*
+
 #### 2. SSH user
 
 By default, `oshiv` uses the `opc` user. This can be overriden by flags. See `oshiv bastion -h`
@@ -215,11 +147,19 @@ By default, `oshiv` uses port `22` user. This can be overriden by flags. See `os
 
 ### Common usage patterns
 
+#### Compartments
+
 List compartments
 
 ```
 oshiv compart -l
+```
 
+<details>
+
+<summary>Output</summary>
+
+```
 COMPARTMENTS:
 fakecompartment1
 dummycompartment2
@@ -228,6 +168,7 @@ mycompartment
 To set compartment, run:
    oshiv compartment -s COMPARTMENT_NAME
 ```
+</details>
 
 Set compartment
 
@@ -235,19 +176,30 @@ Set compartment
 oshiv compartment -s MyFooCompartment
 ```
 
+#### Instances
+
 Find instance
 
 ```
-oshiv inst -f mydatabase
+oshiv inst -f foo-app
+```
 
-Name: mydatabase-1
+<details>
+
+<summary>Output</summary
+
+```
+Name: my-foo-app-1
 Instance ID: ocid1.instance.oc2.us-luke-1.abcdefghijklmnopqrstuvwxyz
 Private IP: 123.456.789.5
 
-Name: mydatabase-2
+Name: my-foo-app-2
 Instance ID: ocid1.instance.oc2.us-luke-1.bacdefghijklmnopqrstuvwxyz
 Private IP: 123.456.789.6
 ```
+
+</details>
+<br>
 
 Create bastion session to connect to instance
 
@@ -258,6 +210,10 @@ oshiv inst -i 123.456.789.5 -o ocid1.instance.oc2.us-luke-1.abcdefghijklmnopqrst
 Connect to instance
 
 `oshiv` will produce various SSH commands to connect to your instance
+
+<details>
+
+<summary>Output</summary
 
 ```
 Tunnel:
@@ -277,7 +233,11 @@ ssh -i /Users/myuser/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFi
 -P 22 opc@123.456.789.5
 ```
 
-Or find OKE cluster and create bastion session to connect to the Kubernetes API
+</details>
+
+#### OKE Kubernetes clusters
+
+Find OKE cluster and create bastion session to connect to the Kubernetes API
 
 ```
 oshiv oke -f oke-my-foo-cluster
@@ -287,7 +247,7 @@ oshiv oke -f oke-my-foo-cluster
 oshiv bastion -y port-forward -k oke-my-foo-cluster -i 123.456.789.7
 ```
 
-7. Connect to cluster
+Connect to cluster
 
 `oshiv` will produce an SSH command to allow port forwarding connectivity to your cluster. It will also produce an oci cli commands to update your Kubernetes config file with the OKE cluster details (this only needs to be performed once).
 
@@ -321,9 +281,13 @@ For MacOS, I recommend [TigerVNC](https://tigervnc.org/) but the built-in VNC cl
 localhost:5902
 ```
 
-![Tiger VNC](tiger-vnc.png)
+Tiger VNC
 
-![VNC native on Mac OS](mac-vnc-connect-to-server.jpg)
+<img src="tiger-vnc.png" width="400"/>
+
+MacOS VNC
+
+<img src="mac-vnc-connect-to-server.jpg" width="400"/>
 
 #### RDP (Windows)
 
@@ -417,7 +381,82 @@ Verify the [releaser](https://github.com/cnopslabs/oshiv/actions/workflows/relea
 - Manage SSH keys
   - https://pkg.go.dev/crypto#PrivateKey
 
-## Troubleshooting
+## Reference
+
+https://docs.oracle.com/en-us/iaas/tools/go/65.78.0/
+
+## Appendix
+
+### Manual installation
+
+<details>
+
+<summary>Manual install steps</summary>
+
+You can download the latest binary from the [oshiv releases](https://github.com/cnopslabs/oshiv/releases) page.
+
+Place the Binary in Your `PATH`
+
+**macOS/Linux**
+
+After downloading the binary, move it to a directory included in your `PATH` (e.g., `/usr/local/bin` or any custom location).
+
+**Example: Adding Binary to a Custom Path**
+
+1. Check your `PATH`:
+   ```bash
+   echo $PATH
+   ```
+   Example output:
+   ```
+   /usr/local/bin:/Users/YOUR_USER/.local/bin
+   ```
+
+2. Move the binary to a directory in your `PATH` (e.g., `~/.local/bin`):
+   ```bash
+   mv ~/Downloads/oshiv ~/.local/bin
+   ```
+
+3. For macOS, clear quarantine (if applicable):
+   ```bash
+   sudo xattr -d com.apple.quarantine ~/.local/bin/oshiv
+   ```
+
+4. Make the binary executable:
+   ```bash
+   chmod +x ~/.local/bin/oshiv
+   ```
+
+5. Verify the installation:
+   ```bash
+   oshiv -h
+   ```
+
+**Windows Setup**
+
+To use `oshiv` on Windows, you need to add its location to the `PATH` environment variable.
+
+Steps
+
+1. Open **Control Panel** → **System** → **System Settings** → **Environment Variables**.
+2. Scroll down in the **System Variables** section and locate the `PATH` variable.
+3. Click **Edit** and add the location of your `oshiv` binary to the `PATH` variable. For example, `c:\oshiv`.
+
+   *Note: When adding a new location, ensure that a semicolon (`;`) is included as a delimiter if appending to existing entries. Example: `c:\path;c:\oshiv`.*
+
+4. Launch a new console session to apply the updated environment variable.
+
+Verify Installation
+
+Once your `PATH` is updated, verify the installation by running:
+
+```bash
+oshiv -h
+```
+
+If the command prints the `oshiv` help information, the setup is complete.
+
+Troubleshooting
 
 If oshiv gets quarantined by your OS
 
@@ -431,6 +470,4 @@ example
 sudo xattr -d com.apple.quarantine ~/.local/bin/oshiv
 ```
 
-## Reference
-
-https://docs.oracle.com/en-us/iaas/tools/go/65.78.0/
+</details>
