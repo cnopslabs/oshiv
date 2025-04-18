@@ -269,6 +269,17 @@ func PrintPortFwSshCommands(bastionClient bastion.BastionClient, sessionId *stri
 	fmt.Println("ssh -i \"" + sshPrivateKey + "\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 
 	fmt.Println("-N -L " + strconv.Itoa(localFwPort) + ":" + targetIp + ":" + strconv.Itoa(hostFwPort) + " " + bastionHost)
+
+	// Add SQLPlus example commands
+	if hostFwPort == 1521 {
+		utils.Yellow.Println("\nSQLPlus command")
+		fmt.Println("sqlplus '" + color.RedString("USERNAME") + "/" + color.RedString("PASSWORD") + "@(description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1521)(host=localhost))(connect_data=(service_name=" + color.RedString("SERVICE_NAME") + "))(security=(ssl_server_dn_match=no)))'")
+	}
+
+	if hostFwPort == 1522 {
+		utils.Yellow.Println("\nSQLPlus command")
+		fmt.Println("sqlplus '" + color.RedString("USERNAME") + "/" + color.RedString("PASSWORD") + "@(description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=localhost))(connect_data=(service_name=" + color.RedString("SERVICE_NAME") + "))(security=(ssl_server_cert_dn=\"CN=" + color.RedString("COMMON_NAME") + ",O=Oracle Corporation,L=Redwood City,ST=California,C=US\")))'")
+	}
 }
 
 // Print SSH commands to connect via bastion
