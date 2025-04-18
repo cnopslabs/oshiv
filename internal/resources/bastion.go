@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/cnopslabs/oshiv/internal/utils"
 	"github.com/fatih/color"
@@ -197,6 +198,9 @@ func ListBastionSessions(bastionClient bastion.BastionClient, bastionId string, 
 func CreateBastionSession(bastionClient bastion.BastionClient, bastionId string, sessionType string, publicKeyContent string, targetIp string, sshPort int, hostFwPort int, sessionTtl int, targetInstanceId string, sshUser string) *string {
 	var req bastion.CreateSessionRequest
 
+	id := utils.GenerateID(4) // 4 bytes = ~6 chars
+	targetIpSafe := strings.ReplaceAll(targetIp, ".", "-")
+
 	switch sessionType {
 	case "port-forward":
 		fmt.Println("Creating port forwarding SSH session...")
@@ -204,7 +208,7 @@ func CreateBastionSession(bastionClient bastion.BastionClient, bastionId string,
 		req = bastion.CreateSessionRequest{
 			CreateSessionDetails: bastion.CreateSessionDetails{
 				BastionId:           &bastionId,
-				DisplayName:         common.String("oshivSession"),
+				DisplayName:         common.String("oshiv-" + "pt-fw-" + targetIpSafe + "-" + strconv.Itoa(hostFwPort) + id),
 				KeyDetails:          &bastion.PublicKeyDetails{PublicKeyContent: &publicKeyContent},
 				SessionTtlInSeconds: common.Int(sessionTtl),
 				TargetResourceDetails: bastion.PortForwardingSessionTargetResourceDetails{
@@ -225,7 +229,7 @@ func CreateBastionSession(bastionClient bastion.BastionClient, bastionId string,
 		req = bastion.CreateSessionRequest{
 			CreateSessionDetails: bastion.CreateSessionDetails{
 				BastionId:           &bastionId,
-				DisplayName:         common.String("oshivSession"),
+				DisplayName:         common.String("oshiv-" + "mng-ssh-" + targetIpSafe + id),
 				KeyDetails:          &bastion.PublicKeyDetails{PublicKeyContent: &publicKeyContent},
 				SessionTtlInSeconds: common.Int(sessionTtl),
 				TargetResourceDetails: bastion.CreateManagedSshSessionTargetResourceDetails{
@@ -264,7 +268,18 @@ func PrintPortFwSshCommands(bastionClient bastion.BastionClient, sessionId *stri
 	utils.Yellow.Println("\nPort Forwarding command")
 	fmt.Println("ssh -i \"" + sshPrivateKey + "\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
 
-	fmt.Println("-p " + strconv.Itoa(sshPort) + " -N -L " + strconv.Itoa(localFwPort) + ":" + targetIp + ":" + strconv.Itoa(hostFwPort) + " " + bastionHost)
+	fmt.Println("-N -L " + strconv.Itoa(localFwPort) + ":" + targetIp + ":" + strconv.Itoa(hostFwPort) + " " + bastionHost)
+
+	// Add SQLPlus example commands
+	if hostFwPort == 1521 {
+		utils.Yellow.Println("\nSQLPlus command")
+		fmt.Println("sqlplus '" + color.RedString("USERNAME") + "/" + color.RedString("PASSWORD") + "@(description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1521)(host=localhost))(connect_data=(service_name=" + color.RedString("SERVICE_NAME") + "))(security=(ssl_server_dn_match=no)))'")
+	}
+
+	if hostFwPort == 1522 {
+		utils.Yellow.Println("\nSQLPlus command")
+		fmt.Println("sqlplus '" + color.RedString("USERNAME") + "/" + color.RedString("PASSWORD") + "@(description= (retry_count=20)(retry_delay=3)(address=(protocol=tcps)(port=1522)(host=localhost))(connect_data=(service_name=" + color.RedString("SERVICE_NAME") + "))(security=(ssl_server_cert_dn=\"CN=" + color.RedString("COMMON_NAME") + ",O=Oracle Corporation,L=Redwood City,ST=California,C=US\")))'")
+	}
 }
 
 // Print SSH commands to connect via bastion
@@ -280,29 +295,36 @@ func PrintManagedSshCommands(bastionClient bastion.BastionClient, sessionId *str
 		utils.Yellow.Println("\nTunnel command")
 		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
-		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
-		fmt.Println("-P " + strconv.Itoa(sshPort) + " " + sshUser + "@" + instanceIp + " -N -L " + color.RedString("LOCAL_PORT") + ":" + instanceIp + ":" + color.RedString("REMOTE_PORT"))
+		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p " + bastionHost + "' \\")
+		fmt.Println(sshUser + "@" + instanceIp + " -N -L " + color.RedString("LOCAL_PORT") + ":" + instanceIp + ":" + color.RedString("REMOTE_PORT"))
 	} else if localFwPort != 0 {
 		utils.Yellow.Println("\nTunnel command")
-		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
+
+		// Use sudo for privileged ports
+		if localFwPort < 1024 {
+			fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
+		} else {
+			fmt.Println("ssh -i \"" + sshIdentityFile + "\" \\")
+		}
+
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
-		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
-		fmt.Println("-P " + strconv.Itoa(sshPort) + " " + sshUser + "@" + instanceIp + " -N -L " + strconv.Itoa(localFwPort) + ":" + instanceIp + ":" + strconv.Itoa(hostFwPort))
+		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p " + bastionHost + "' \\")
+		fmt.Println(sshUser + "@" + instanceIp + " -N -L " + strconv.Itoa(localFwPort) + ":" + instanceIp + ":" + strconv.Itoa(hostFwPort))
 	} else {
 		utils.Yellow.Println("\nTunnel command")
 		fmt.Println("sudo ssh -i \"" + sshIdentityFile + "\" \\")
 		fmt.Println("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
-		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p -p 22 " + bastionHost + "' \\")
-		fmt.Println("-P " + strconv.Itoa(sshPort) + " " + sshUser + "@" + instanceIp + " -N -L " + strconv.Itoa(hostFwPort) + ":" + instanceIp + ":" + strconv.Itoa(hostFwPort))
+		fmt.Println("-o ProxyCommand='ssh -i \"" + sshIdentityFile + "\" -W %h:%p " + bastionHost + "' \\")
+		fmt.Println(sshUser + "@" + instanceIp + " -N -L " + strconv.Itoa(hostFwPort) + ":" + instanceIp + ":" + strconv.Itoa(hostFwPort))
 	}
 
 	utils.Yellow.Println("\nSCP command")
-	fmt.Println("scp -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P " + strconv.Itoa(sshPort) + " \\")
-	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p -p 22 " + bastionHost + "' \\")
+	fmt.Println("scp -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" + " \\")
+	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p " + bastionHost + "' \\")
 	fmt.Println(color.RedString("SOURCE_PATH ") + sshUser + "@" + instanceIp + ":" + color.RedString("TARGET_PATH"))
 
 	utils.Yellow.Println("\nSSH command")
 	fmt.Println("ssh -i " + sshIdentityFile + " -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \\")
-	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p -p 22 " + bastionHost + "' \\")
-	fmt.Println("-P " + strconv.Itoa(sshPort) + " " + sshUser + "@" + instanceIp)
+	fmt.Println("-o ProxyCommand='ssh -i " + sshIdentityFile + " -W %h:%p " + bastionHost + "' \\")
+	fmt.Println(sshUser + "@" + instanceIp)
 }
