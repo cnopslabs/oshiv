@@ -133,7 +133,7 @@ func FindPolicies(identityClient identity.IdentityClient, compartmentId string, 
 	if pattern_name != "" && pattern_statement == "" {
 		// Match on name
 		for _, policy := range policies {
-			match, _ := regexp.MatchString(pattern_name, policy.name)
+			match, _ := regexp.MatchString("(?i)"+pattern_name, policy.name)
 			if match {
 				matches = append(matches, policy)
 			}
@@ -142,7 +142,7 @@ func FindPolicies(identityClient identity.IdentityClient, compartmentId string, 
 		// Match on statement
 		for _, policy := range policies {
 			for _, statement := range policy.statements {
-				match, _ := regexp.MatchString(pattern_statement, statement)
+				match, _ := regexp.MatchString("(?i)"+pattern_statement, statement)
 				if match {
 					if !policyContains(matches, policy) {
 						matches = append(matches, policy)
@@ -155,7 +155,7 @@ func FindPolicies(identityClient identity.IdentityClient, compartmentId string, 
 		var name_matches []Policy
 
 		for _, policy := range policies {
-			n_match, _ := regexp.MatchString(pattern_name, policy.name)
+			n_match, _ := regexp.MatchString("(?i)"+pattern_name, policy.name)
 			if n_match {
 				name_matches = append(name_matches, policy)
 			}
@@ -163,7 +163,7 @@ func FindPolicies(identityClient identity.IdentityClient, compartmentId string, 
 
 		for _, policy := range name_matches {
 			for _, statement := range policy.statements {
-				s_match, _ := regexp.MatchString(pattern_statement, statement)
+				s_match, _ := regexp.MatchString("(?i)"+pattern_statement, statement)
 
 				if s_match {
 					if !policyContains(matches, policy) {
