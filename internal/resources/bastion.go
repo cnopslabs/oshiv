@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/cnopslabs/oshiv/internal/utils"
 	"github.com/fatih/color"
@@ -197,6 +198,9 @@ func ListBastionSessions(bastionClient bastion.BastionClient, bastionId string, 
 func CreateBastionSession(bastionClient bastion.BastionClient, bastionId string, sessionType string, publicKeyContent string, targetIp string, sshPort int, hostFwPort int, sessionTtl int, targetInstanceId string, sshUser string) *string {
 	var req bastion.CreateSessionRequest
 
+	id := utils.GenerateID(4) // 4 bytes = ~6 chars
+	targetIpSafe := strings.ReplaceAll(targetIp, ".", "-")
+
 	switch sessionType {
 	case "port-forward":
 		fmt.Println("Creating port forwarding SSH session...")
@@ -204,7 +208,7 @@ func CreateBastionSession(bastionClient bastion.BastionClient, bastionId string,
 		req = bastion.CreateSessionRequest{
 			CreateSessionDetails: bastion.CreateSessionDetails{
 				BastionId:           &bastionId,
-				DisplayName:         common.String("oshivSession"),
+				DisplayName:         common.String("oshiv-" + "pt-fw-" + targetIpSafe + "-" + strconv.Itoa(hostFwPort) + id),
 				KeyDetails:          &bastion.PublicKeyDetails{PublicKeyContent: &publicKeyContent},
 				SessionTtlInSeconds: common.Int(sessionTtl),
 				TargetResourceDetails: bastion.PortForwardingSessionTargetResourceDetails{
@@ -225,7 +229,7 @@ func CreateBastionSession(bastionClient bastion.BastionClient, bastionId string,
 		req = bastion.CreateSessionRequest{
 			CreateSessionDetails: bastion.CreateSessionDetails{
 				BastionId:           &bastionId,
-				DisplayName:         common.String("oshivSession"),
+				DisplayName:         common.String("oshiv-" + "mng-ssh-" + targetIpSafe + id),
 				KeyDetails:          &bastion.PublicKeyDetails{PublicKeyContent: &publicKeyContent},
 				SessionTtlInSeconds: common.Int(sessionTtl),
 				TargetResourceDetails: bastion.CreateManagedSshSessionTargetResourceDetails{
