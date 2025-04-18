@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/cnopslabs/oshiv/internal/utils"
 	"github.com/oracle/oci-go-sdk/v65/database"
@@ -14,7 +15,8 @@ type Database struct {
 	name              string
 	id                string
 	privateEndpointIp string
-	port              string
+	connectStrings    map[string]string
+	profiles          []database.DatabaseConnectionStringProfile
 }
 
 // Fetch all databases via OCI API call
@@ -28,9 +30,10 @@ func fetchDatabases(databaseClient database.DatabaseClient, compartmentId string
 		databaseName := *database.DbName
 		databaseId := *database.Id
 		databaseIp := *database.PrivateEndpointIp
-		databasePort := getDatabasePort(*database.ConnectionStrings)
+		databaseConnectStrings := database.ConnectionStrings.AllConnectionStrings
+		databaseProfiles := database.ConnectionStrings.Profiles
 
-		database := Database{databaseName, databaseId, databaseIp, databasePort}
+		database := Database{databaseName, databaseId, databaseIp, databaseConnectStrings, databaseProfiles}
 		databases = append(databases, database)
 	}
 
@@ -45,9 +48,10 @@ func fetchDatabases(databaseClient database.DatabaseClient, compartmentId string
 				databaseName := *database.DbName
 				databaseId := *database.Id
 				databaseIp := *database.PrivateEndpoint
-				databasePort := getDatabasePort(*database.ConnectionStrings)
+				databaseConnectStrings := database.ConnectionStrings.AllConnectionStrings
+				databaseProfiles := database.ConnectionStrings.Profiles
 
-				database := Database{databaseName, databaseId, databaseIp, databasePort}
+				database := Database{databaseName, databaseId, databaseIp, databaseConnectStrings, databaseProfiles}
 				databases = append(databases, database)
 			}
 
@@ -60,25 +64,6 @@ func fetchDatabases(databaseClient database.DatabaseClient, compartmentId string
 	}
 
 	return databases
-}
-
-// Get database port from connect strings
-func getDatabasePort(connStrings database.AutonomousDatabaseConnectionStrings) string {
-	profile := connStrings.Profiles[0].Value // TODO: this is pulling the first profile of many which is typically be the "high" profile. Not sure if this is standardized.
-	databasePort := matchDbPort(*profile)
-
-	return databasePort
-}
-
-// Match and return the database's service port from the connect string
-func matchDbPort(dbConnectString string) string {
-	// Matches something like "port=1522" in connect string
-	re := regexp.MustCompile(`port=(\d+)`)
-	match := re.FindStringSubmatch(dbConnectString)
-	if len(match) > 1 {
-		return match[1]
-	}
-	return ""
 }
 
 // Match pattern and return database matches
@@ -131,9 +116,42 @@ func PrintDatabases(databases []Database, tenancyName string, compartmentName st
 			utils.Yellow.Println(database.id)
 			fmt.Print("Private endpoint: ")
 			utils.Yellow.Println(database.privateEndpointIp)
-			fmt.Print("Port: ")
-			utils.Yellow.Println(database.port)
+
+			for serviceType, connectString := range database.connectStrings {
+				connectStringParts := strings.Split(connectString, "/")
+				serviceName := connectStringParts[1]
+				commonNamePort := connectStringParts[0]
+				commonNamePortParts := strings.Split(commonNamePort, ":")
+				commonName := commonNamePortParts[0]
+
+				// Use "High" service for admin / troubleshooting
+				if serviceType == "HIGH" {
+					fmt.Print("Service name: ")
+					utils.Yellow.Println(serviceName)
+
+					fmt.Print("Common name (CN): ")
+					utils.Yellow.Println(commonName)
+				}
+			}
+
 			fmt.Println("")
+			fmt.Println("Connect strings:")
+
+			for _, profile := range database.profiles {
+				// Use "High" service for admin / troubleshooting
+				if strings.Contains(*profile.DisplayName, "high") {
+					if strings.Contains(*profile.Value, "1521") {
+						utils.Italic.Println("Standard")
+						utils.Yellow.Println(*profile.Value)
+					}
+
+					if strings.Contains(*profile.Value, "1522") {
+						fmt.Println("")
+						utils.Italic.Println("MTLS")
+						utils.Yellow.Println(*profile.Value)
+					}
+				}
+			}
 		}
 	}
 }
