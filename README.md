@@ -344,9 +344,8 @@ The `info` command displays custom tenancy info that you define in your tenancy 
 [tenancy-map.yaml example](examples/tenancy-map.yml)
 
 
-## Contribute
-
-Style guide: https://go.dev/doc/effective_go
+## 🤝 Contributing
+Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on submitting Enhancement Proposals and Pull Requests.
 
 ### Build
 
