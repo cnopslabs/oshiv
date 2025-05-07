@@ -344,7 +344,7 @@ The `info` command displays custom tenancy info that you define in your tenancy 
 [tenancy-map.yaml example](examples/tenancy-map.yml)
 
 
-## 🤝 Contributing
+## Contributing
 Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on submitting Enhancement Proposals and Pull Requests.
 
 ### Build
