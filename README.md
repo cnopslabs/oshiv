@@ -164,18 +164,9 @@ COMPARTMENTS:
 fakecompartment1
 dummycompartment2
 mycompartment
-
-To set compartment, run:
-   oshiv compartment -s COMPARTMENT_NAME
 ```
 
 </details>
-
-Set compartment
-
-```
-oshiv compartment -s MyFooCompartment
-```
 
 #### Instances
 
@@ -359,9 +350,13 @@ Test/validate changes, push to your fork, make PR
 
 ### Release
 
+After PR has been reviewed and merged, perform the release process.
+
 ```
 make release
 ```
+
+Push version tag
 
 ```
 git tag -a <VERSION> -m '<COMMENTS>'
