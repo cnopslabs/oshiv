@@ -37,6 +37,12 @@ var sessionCmd = &cobra.Command{
 		bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(err)
 
+		region, envVarExists := os.LookupEnv("OCI_CLI_REGION")
+		if envVarExists {
+			identityClient.SetRegion(region)
+			bastionClient.SetRegion(region)
+		}
+
 		bastions := resources.FetchBastions(compartmentId, bastionClient)
 
 		bastionNameFromFlag, _ := cmd.Flags().GetString("bastion-name")

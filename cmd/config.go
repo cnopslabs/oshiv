@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/cnopslabs/oshiv/internal/resources"
 	"github.com/cnopslabs/oshiv/internal/utils"
@@ -18,13 +19,18 @@ var configCmd = &cobra.Command{
 		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(identityErr)
 
+		region, envVarExists := os.LookupEnv("OCI_CLI_REGION")
+		if envVarExists {
+			identityClient.SetRegion(region)
+		}
+
 		// Read tenancy ID flag and calculate tenancy
 		FlagTenancyId := rootCmd.Flags().Lookup("tenancy-id")
 		utils.SetTenancyConfig(FlagTenancyId, utils.OciConfig())
 		tenancyId := viper.GetString("tenancy-id")
 		tenancyName := viper.GetString("tenancy-name")
 
-		// Read compartment flag and add to Viper config
+		// Add compartment to Viper config if it was passed as flag
 		FlagCompartment := rootCmd.Flags().Lookup("compartment")
 		compartments := resources.FetchCompartments(tenancyId, identityClient)
 		utils.SetCompartmentConfig(FlagCompartment, compartments, tenancyName)

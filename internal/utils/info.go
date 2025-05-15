@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/fatih/color"
 	"github.com/rodaine/table"
 	"gopkg.in/yaml.v2"
 )
@@ -40,6 +41,13 @@ func PrintTenancyMap() {
 		}
 
 		tbl.Print()
+
+		fmt.Println("\nTo set Tenancy, Compartment, or Region export the " + color.YellowString("OCI_TENANCY_NAME") + ", " + color.YellowString("OCI_COMPARTMENT") + ", or " + color.YellowString("OCI_CLI_REGION") + " environment variables.")
+		fmt.Println("\nOr if using oshell, run:")
+		fmt.Print("oci_set_tenancy ")
+		Yellow.Println("TENANCY_NAME ")
+		fmt.Print("oci_set_tenancy ")
+		Yellow.Println("TENANCY_NAME COMPARTMENT_NAME")
 	} else {
 		fmt.Println("No tenancy info file found.")
 	}

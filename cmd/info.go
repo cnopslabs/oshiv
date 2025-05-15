@@ -30,5 +30,5 @@ var infoCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(infoCmd)
 
-	infoCmd.Flags().StringP("lookup-tenancy-id", "l", "", "Lookup tenancy ID from tenancy name in Tenancy map file")
+	infoCmd.Flags().StringP("lookup-tenancy-id", "g", "", "Lookup tenancy ID by tenancy name")
 }
