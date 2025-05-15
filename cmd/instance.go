@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/cnopslabs/oshiv/internal/resources"
 	"github.com/cnopslabs/oshiv/internal/utils"
@@ -38,6 +39,12 @@ var instanceCmd = &cobra.Command{
 
 		vnetClient, err := core.NewVirtualNetworkClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(err)
+
+		region, envVarExists := os.LookupEnv("OCI_CLI_REGION")
+		if envVarExists {
+			computeClient.SetRegion(region)
+			vnetClient.SetRegion(region)
+		}
 
 		flagList, _ := cmd.Flags().GetBool("list")
 		flagFind, _ := cmd.Flags().GetString("find")

@@ -15,9 +15,10 @@ import (
 )
 
 var bastionCmd = &cobra.Command{
-	Use:   "bastion",
-	Short: "Find, list, and connect to resources via the OCI bastion service",
-	Long:  "Find, list, and connect to resources via the OCI bastion service",
+	Use:     "bastion",
+	Short:   "Find, list, and connect to resources via the OCI bastion service",
+	Long:    "Find, list, and connect to resources via the OCI bastion service",
+	Aliases: []string{"bast"},
 	Run: func(cmd *cobra.Command, args []string) {
 		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(identityErr)
@@ -41,6 +42,12 @@ var bastionCmd = &cobra.Command{
 
 		bastionClient, err := bastion.NewBastionClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(err)
+
+		region, envVarExists := os.LookupEnv("OCI_CLI_REGION")
+		if envVarExists {
+			containerEngineClient.SetRegion(region)
+			bastionClient.SetRegion(region)
+		}
 
 		bastions := resources.FetchBastions(compartmentId, bastionClient)
 

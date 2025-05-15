@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/cnopslabs/oshiv/internal/resources"
 	"github.com/cnopslabs/oshiv/internal/utils"
@@ -27,21 +28,20 @@ var compartmentCmd = &cobra.Command{
 		identityClient, identityErr := identity.NewIdentityClientWithConfigurationProvider(utils.OciConfig())
 		utils.CheckError(identityErr)
 
+		region, envVarExists := os.LookupEnv("OCI_CLI_REGION")
+		if envVarExists {
+			identityClient.SetRegion(region)
+		}
+
 		compartments := resources.FetchCompartments(tenancyId, identityClient)
 
 		flagList, _ := cmd.Flags().GetBool("list")
 		flagFind, _ := cmd.Flags().GetString("find")
 
-		flagSetCompartment := cmd.Flags().Lookup("set-compartment")
-		flagSetCompartmentString, _ := cmd.Flags().GetString("set-compartment")
-
 		if flagList {
 			resources.ListCompartments(compartments, tenancyId, tenancyName)
 		} else if flagFind != "" {
 			resources.FindCompartments(tenancyId, tenancyName, identityClient, flagFind)
-		} else if flagSetCompartment.Changed {
-			// Reset config file and wite compartment to file
-			utils.WriteCompartmentToFile(flagSetCompartmentString, compartments)
 		} else {
 			fmt.Println("Invalid sub-command or flag")
 		}
@@ -53,6 +53,4 @@ func init() {
 
 	compartmentCmd.Flags().BoolP("list", "l", false, "List all compartments")
 	compartmentCmd.Flags().StringP("find", "f", "", "Find compartment by name pattern search")
-	var flagSetCompartment string
-	compartmentCmd.Flags().StringVarP(&flagSetCompartment, "set-compartment", "s", "", "Set compartment name")
 }

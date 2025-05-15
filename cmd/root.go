@@ -22,21 +22,33 @@ func Execute() {
 	// We need to do some initialization prior to executing any sub-commands
 	// Note: all sub-commands depend in this initialization
 
-	// 1. Create it if it doesn't exist
-	utils.ConfigFileInit()
-
-	// 2. Load config file into Viper config
-	// Note: Only compartment is persisted in config file
-	utils.ConfigFileRead()
-
-	// 3. Get tenancy ID from OCI config file and set as the default (lowest precedence order) in viper config
+	// Get tenancy ID from OCI config file and set as the default (lowest precedence order) in viper config
 	ociConfigTenancyId, err_config := utils.OciConfig().TenancyOCID()
-
 	utils.CheckError(err_config)
 	viper.SetDefault("tenancy-id", ociConfigTenancyId)
 
-	// 4. Attempt to add tenancy ID to Viper config from environment variable (3rd lowest precedence order)
-	viper.BindEnv("tenancy-id", "OCI_CLI_TENANCY")
+	// Attempt to add tenancy ID to Viper config from environment variable (3rd lowest precedence order)
+	// Note: OCI_CLI_TENANCY env var follows OCI CLI convention for Tenancy ID
+	_, envVarExists := os.LookupEnv("OCI_CLI_TENANCY")
+	if envVarExists {
+		viper.BindEnv("tenancy-id", "OCI_CLI_TENANCY")
+	} else {
+		// Since OCI_CLI_TENANCY (ID) is not set by env var, see if OCI_TENANCY_NAME is
+		// OCI_TENANCY_NAME does not follow OCI CLI convention but is nicer for humans
+		tenancy_from_env, envVarExists := os.LookupEnv("OCI_TENANCY_NAME")
+
+		if envVarExists {
+			// Since OCI_TENANCY_NAME is set, let's use it to lookup and set Tenancy ID
+			tenancyId, err := utils.LookUpTenancyID(tenancy_from_env)
+			utils.CheckError(err)
+
+			// Override tenancy ID
+			viper.Set("tenancy-id", tenancyId)
+		}
+	}
+
+	// Attempt to add compartment to Viper config from environment variable (3rd lowest precedence order)
+	viper.BindEnv("compartment", "OCI_COMPARTMENT")
 
 	// Execute adds all child commands to the root command and sets flags appropriately.
 	err := rootCmd.Execute()
