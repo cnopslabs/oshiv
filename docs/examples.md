@@ -173,11 +173,11 @@ localhost:5902
 
 Tiger VNC
 
-<img src="../tiger-vnc.png" width="400"/>
+<img src="assets/tiger-vnc.png" width="400"/>
 
 MacOS VNC
 
-<img src="../mac-vnc-connect-to-server.jpg" width="400"/>
+<img src="assets/mac-vnc-connect-to-server.jpg" width="400"/>
 
 ### RDP (Windows)
 
