@@ -115,6 +115,9 @@ func fetchPrivateIps(client core.VirtualNetworkClient, compartmentId string) map
 
 // Fetch all instances via OCI API call
 func fetchInstances(computeClient core.ComputeClient, compartmentId string) []Instance {
+	utils.Logger.Debug("Compartment ID: " + compartmentId)
+	utils.Logger.Debug("Compartment ID: " + computeClient.Endpoint())
+
 	var instances []Instance
 
 	initialResponse, err := computeClient.ListInstances(context.Background(), core.ListInstancesRequest{
@@ -124,6 +127,17 @@ func fetchInstances(computeClient core.ComputeClient, compartmentId string) []In
 	utils.CheckError(err)
 
 	for _, instance := range initialResponse.Items {
+		utils.Logger.Debug("Instance Name: " + *instance.DisplayName)
+		utils.Logger.Debug("Instance ID: " + *instance.Id)
+		utils.Logger.Debug("Instance IP: " + "Need to look up")
+		utils.Logger.Debug("Instance AvailabilityDomain: " + *instance.AvailabilityDomain)
+		utils.Logger.Debug("Instance Shape: " + *instance.Shape)
+		utils.Logger.Debug("Instance ImageId: " + *instance.ImageId)
+		utils.Logger.Debug("Instance FaultDomain: " + *instance.FaultDomain)
+		utils.Logger.Debug("Instance Vcpus: " + strconv.Itoa(*instance.ShapeConfig.Vcpus))
+		utils.Logger.Debug("Instance Memory: " + fmt.Sprintf("%f", *instance.ShapeConfig.MemoryInGBs))
+		utils.Logger.Debug("Instance Region: " + *instance.Region)
+
 		instance := Instance{
 			*instance.DisplayName,
 			*instance.Id,
