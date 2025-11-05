@@ -88,6 +88,17 @@ var bastionCmd = &cobra.Command{
 			if uniqueBastionId != "" {
 				bastionId = uniqueBastionId
 			} else {
+				if flagBastionId == "" {
+					fmt.Println("Multiple bastions found, must pass flag --bastion-id:")
+					fmt.Println("Bastions:")
+
+					for k, v := range bastions {
+						fmt.Println(" - " + k + ": " + v)
+					}
+
+					os.Exit(1)
+				}
+
 				bastionId = flagBastionId
 			}
 
