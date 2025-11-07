@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cnopslabs/oshiv/internal/utils"
 	"github.com/oracle/oci-go-sdk/v65/common"
@@ -28,6 +29,12 @@ type Instance struct {
 	region   string
 	state    core.InstanceLifecycleStateEnum
 	subnetId string
+	hostname string
+}
+
+type vnicInfo struct {
+	ip       string
+	hostname string
 }
 
 // Sort instances by name
@@ -74,12 +81,25 @@ func fetchVnicAttachments(client core.ComputeClient, compartmentId string) (map[
 	return attachments, attachments_subnets
 }
 
-// Fetch private IP from VNIC (OCI API call)
-func fetchPrivateIp(client core.VirtualNetworkClient, vnicId string) string {
+// Fetch private IP and hostname from VNIC (OCI API call)
+func fetchPrivateIp(client core.VirtualNetworkClient, vnicId string) (string, string) {
 	response, err := client.GetVnic(context.Background(), core.GetVnicRequest{VnicId: &vnicId})
 	utils.CheckError(err)
 
-	return *response.Vnic.PrivateIp
+	hostname := ""
+
+	privateIP := *response.Vnic.PrivateIp
+	hostname = *response.Vnic.HostnameLabel
+
+	// Optional: debug print
+	if hostname != "" {
+		utils.Logger.Debug("DEBUG (single): " + hostname)
+	} else {
+		utils.Logger.Debug("DEBUG (single): NO_HOSTNAME")
+		hostname = "Lookup failed"
+	}
+
+	return privateIP, hostname
 }
 
 // Fetch all subnet IDs via OCI API call
@@ -96,21 +116,55 @@ func fetchSubnetIds(client core.VirtualNetworkClient, compartmentId string) []st
 	return subnetIds
 }
 
-// Fetch all private IPs via OCI API call
-func fetchPrivateIps(client core.VirtualNetworkClient, compartmentId string) map[string]string {
-	vNicIdsToIps := make(map[string]string)
+// Fetch all private IPs and hostnames via OCI API call
+func fetchPrivateIps(client core.VirtualNetworkClient, compartmentId string) map[string]vnicInfo {
+	ctx := context.Background()
+	vnicIdToInfo := make(map[string]vnicInfo)
 	subnetIds := fetchSubnetIds(client, compartmentId)
 
 	for _, subnetId := range subnetIds {
-		response, err := client.ListPrivateIps(context.Background(), core.ListPrivateIpsRequest{SubnetId: &subnetId})
-		utils.CheckError(err)
+		var page *string
 
-		for _, item := range response.Items {
-			vNicIdsToIps[*item.VnicId] = *item.IpAddress
+		for {
+			resp, err := client.ListPrivateIps(ctx, core.ListPrivateIpsRequest{
+				SubnetId: &subnetId,
+				Page:     page,
+				Limit:    common.Int(1000),
+			})
+
+			// simple retry on 429 TooManyRequests
+			if svcErr, ok := common.IsServiceError(err); ok && svcErr.GetHTTPStatusCode() == 429 {
+				fmt.Println("Rate limited. Waiting 5 seconds before retry...")
+				time.Sleep(5 * time.Second)
+				continue
+			}
+			utils.CheckError(err)
+
+			for _, item := range resp.Items {
+				hostname := ""
+				if item.HostnameLabel != nil && *item.HostnameLabel != "" {
+					hostname = *item.HostnameLabel
+				} else {
+					hostname = "Lookup failed"
+				}
+
+				vnicIdToInfo[*item.VnicId] = vnicInfo{
+					ip:       *item.IpAddress,
+					hostname: hostname,
+				}
+			}
+
+			if resp.OpcNextPage == nil {
+				break
+			}
+			page = resp.OpcNextPage
 		}
+
+		// small pause between subnets to be kind to the API
+		time.Sleep(200 * time.Millisecond)
 	}
 
-	return vNicIdsToIps
+	return vnicIdToInfo
 }
 
 // Fetch all instances via OCI API call
@@ -151,7 +205,8 @@ func fetchInstances(computeClient core.ComputeClient, compartmentId string) []In
 			*instance.ShapeConfig.MemoryInGBs,
 			*instance.Region,
 			instance.LifecycleState,
-			"0", // We have to lookup the subnet separately
+			"0",           // We have to lookup the subnet separately
+			"placeholder", // We have to lookup the hostname separately
 		}
 		instances = append(instances, instance)
 	}
@@ -181,6 +236,7 @@ func fetchInstances(computeClient core.ComputeClient, compartmentId string) []In
 					*instance.Region,
 					instance.LifecycleState,
 					"0", // We have to lookup the subnet separately
+					"placeholder",
 				}
 				instances = append(instances, instance)
 			}
@@ -219,25 +275,28 @@ func ListInstances(computeClient core.ComputeClient, compartmentId string, vnetC
 	attachments, attachments_subnets := fetchVnicAttachments(computeClient, compartmentId)
 	// returns map of instanceId: vnicId
 
-	vNicIdsToIps := make(map[string]string)
+	vnicIdToInfo := make(map[string]vnicInfo)
 	if batchFetchAllIps {
-		vNicIdsToIps = fetchPrivateIps(vnetClient, compartmentId) // This is inefficient when instance search results are small, resort to fetchPrivateIp
-		// returns map of vnicId:privateIp
+		vnicIdToInfo = fetchPrivateIps(vnetClient, compartmentId) // This is inefficient when instance search results are small, resort to fetchPrivateIp
+		// returns map of vnicId:vnicInfo
 	}
 
 	var instancesWithIP []Instance
 	var privateIp string
+	var hostname string
 
 	for _, instance := range instances {
 		vnicId, ok := attachments[instance.id]
 		if ok {
 			if batchFetchAllIps {
-				privateIp = vNicIdsToIps[vnicId]
+				privateIp = vnicIdToInfo[vnicId].ip
+				hostname = vnicIdToInfo[vnicId].hostname
 			} else {
-				privateIp = fetchPrivateIp(vnetClient, vnicId)
+				privateIp, hostname = fetchPrivateIp(vnetClient, vnicId)
 			}
 
 			instance.ip = privateIp
+			instance.hostname = hostname
 
 			subnetId, ok := attachments_subnets[instance.id]
 			if ok {
@@ -291,6 +350,9 @@ func ListInstances(computeClient core.ComputeClient, compartmentId string, vnetC
 
 			fmt.Print("Subnet ID: ")
 			utils.Yellow.Println(instance.subnetId)
+
+			fmt.Print("Hostname: ")
+			utils.Yellow.Println(instance.hostname)
 
 			if retrieveImageInfo {
 				image := fetchImage(computeClient, instance.imageId) // TODO: Performance hit: this adds ~100 ms per image lookup
@@ -395,25 +457,28 @@ func FindInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 	attachments, attachments_subnets := fetchVnicAttachments(computeClient, compartmentId)
 	// returns map of instanceId: vnicId
 
-	vNicIdsToIps := make(map[string]string)
+	vnicIdToInfo := make(map[string]vnicInfo)
 	if batchFetchAllIps {
-		vNicIdsToIps = fetchPrivateIps(vnetClient, compartmentId) // This is inefficient when instance search results are small, resort to fetchPrivateIp
-		// returns map of vnicId:privateIp
+		vnicIdToInfo = fetchPrivateIps(vnetClient, compartmentId) // This is inefficient when instance search results are small, resort to fetchPrivateIp
+		// returns map of vnicId:vnicInfo
 	}
 
 	var instancesWithIP []Instance
 	var privateIp string
+	var hostname string
 
 	for _, instance := range instanceMatches {
 		vnicId, ok := attachments[instance.id]
 		if ok {
 			if batchFetchAllIps {
-				privateIp = vNicIdsToIps[vnicId]
+				privateIp = vnicIdToInfo[vnicId].ip
+				hostname = vnicIdToInfo[vnicId].hostname
 			} else {
-				privateIp = fetchPrivateIp(vnetClient, vnicId)
+				privateIp, hostname = fetchPrivateIp(vnetClient, vnicId)
 			}
 
 			instance.ip = privateIp
+			instance.hostname = hostname
 
 			subnetId, ok := attachments_subnets[instance.id]
 			if ok {
@@ -466,6 +531,9 @@ func FindInstances(computeClient core.ComputeClient, vnetClient core.VirtualNetw
 
 			fmt.Print("Subnet ID: ")
 			utils.Yellow.Println(instance.subnetId)
+
+			fmt.Print("Hostname: ")
+			utils.Yellow.Println(instance.hostname)
 
 			if retrieveImageInfo {
 				image := fetchImage(computeClient, instance.imageId) // TODO: Performance hit: this adds ~100 ms per image lookup
